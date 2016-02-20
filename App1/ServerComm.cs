@@ -53,13 +53,16 @@ namespace App1
                 try
                 {
                     //Send data to client
-                    Debug.Write("Send to client \n");
+                    //Debug.Write("Send to client \n");
                     Stream outStream = args.Socket.OutputStream.AsStreamForWrite();
                     StreamWriter writer = new StreamWriter(outStream);
 
 
                     bool[] bufferState = globalData.getBufferState();
                     string[] sendbuffer = globalData.getSendBuffer();
+
+                    Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
+                    Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
 
                     for (int i = 0; i <= sendbuffer.Length-1; i++)
                     {
@@ -85,6 +88,8 @@ namespace App1
                 }
                 catch (Exception ex)
                 {
+                    Debug.Write("Exception in sending \n");
+
                     //writer.DetachStream();
                     // reader.DetachStream();
                     return;
@@ -100,6 +105,11 @@ namespace App1
         private void myTestRoutine()
         {
 
+        }
+
+        public GlobalData getGlobalData()
+        {
+            return globalData;
         }
 
     }

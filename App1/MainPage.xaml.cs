@@ -37,6 +37,8 @@ namespace App1
 
     public sealed partial class MainPage : Page
     {
+        // TODO: Change sensor data to acquire only the constant g values
+
         private const byte ACCEL_REG_POWER_CONTROL = 0x2D;  /* Address of the Power Control register                */
         private const byte ACCEL_REG_DATA_FORMAT = 0x31;    /* Address of the Data Format register                  */
         private const byte ACCEL_REG_X = 0x32;              /* Address of the X Axis data register                  */
@@ -63,17 +65,22 @@ namespace App1
         private GlobalData globalData;
         private Diagnose diagnose;
 
+        // Measurement intervall
+        private int DELTA_T = 1000;
+
         public MainPage()
         {
             this.InitializeComponent();
 
             serverComm = new ServerComm();
-            diagnose = new Diagnose();
+            globalData = serverComm.getGlobalData();
+            diagnose = new Diagnose(globalData);
 
             Task<bool> serverStarted = serverComm.StartServer();
 
             Unloaded += MainPage_Unloaded;
             initGPIO();
+            InitSPIAccel();
         }
 
         private void initGPIO()
@@ -119,16 +126,13 @@ namespace App1
                 SPIAccel = await SpiDevice.FromIdAsync(dis[0].Id, settings);    /* Create an SpiDevice with our bus controller and SPI settings             */
                 if (SPIAccel == null)
                 {
-                    Text_Status.Text = string.Format(
-                        "SPI Controller {0} is currently in use by " +
-                        "another application. Please ensure that no other applications are using SPI.",
-                        dis[0].Id);
+                    Debug.Write("SPI Controller is currently in use by another application.");
                     return;
                 }
             }
             catch (Exception ex)
             {
-                Text_Status.Text = "SPI Initialization failed. Exception: " + ex.Message;
+                Debug.Write("SPI Initialization failed. Exception: " + ex.Message);
                 return;
             }
 
@@ -162,12 +166,7 @@ namespace App1
            //     return;
             //}
             Debug.Write("Create periodicTimer\n");
-            periodicTimer = new Timer(this.TimerCallback, null, 0, 1000);
-        }
-
-        private void onStartClick(object sender, RoutedEventArgs e)
-        {
-            InitSPIAccel();
+            periodicTimer = new Timer(this.TimerCallback, null, 0, DELTA_T);
         }
 
         private void selectSensor(int selector)
@@ -196,7 +195,7 @@ namespace App1
 
             Debug.Write("TimerCallback\n");
 
-            if (sensorCounter >= MAX_SENSOR_COUNT-1) sensorCounter = 0;
+            if (sensorCounter > MAX_SENSOR_COUNT-1) sensorCounter = 0;
 
             /* Read and format accelerometer data */
             try
@@ -208,7 +207,7 @@ namespace App1
                 xText = String.Format("x{0:F3}", accel.X);
                 yText = String.Format("y{0:F3}", accel.Y);
                 zText = String.Format("z{0:F3}", accel.Z);
-                statusText = "Status: Running";
+                Debug.Write("Status acquisition: Running");
 
                 string message = xText + "::" + yText + "::" + zText;
                 diagnose.sendToSocket(sensorCounter.ToString(), message);
@@ -218,19 +217,41 @@ namespace App1
                 xText = "X Axis: Error";
                 yText = "Y Axis: Error";
                 zText = "Z Axis: Error";
-                statusText = "Failed to read from Accelerometer: " + ex.Message;
+                Debug.Write("Failed to read from Accelerometer no: " + sensorCounter + " exception: " + ex.Message);
             }
 
             /* UI updates must be invoked on the UI thread */
             var task = this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
             {
-                Text_X_Axis.Text = xText;
-                Text_Y_Axis.Text = yText;
-                Text_Z_Axis.Text = zText;
-                Text_Status.Text = statusText;
+                switch (sensorCounter)
+                {
+                    case 0: 
+                        Text_X_Axis_0.Text = xText;
+                        Text_Y_Axis_0.Text = yText;
+                        Text_Z_Axis_0.Text = zText;
+                        break;
+                    case 1:
+                        Text_X_Axis_1.Text = xText;
+                        Text_Y_Axis_1.Text = yText;
+                        Text_Z_Axis_1.Text = zText;
+                        break;
+                    case 2:
+                        Text_X_Axis_2.Text = xText;
+                        Text_Y_Axis_2.Text = yText;
+                        Text_Z_Axis_2.Text = zText;
+                        break;
+                    case 3:
+                        Text_X_Axis_3.Text = xText;
+                        Text_Y_Axis_3.Text = yText;
+                        Text_Z_Axis_3.Text = zText;
+                        break;
+                    default:
+                        Debug.Write("Sensor no: " + sensorCounter + " not exist!");
+                        break;
+                }
             });
 
-           // sensorCounter += 1;
+            sensorCounter += 1;
         }
 
         private Acceleration ReadAccel()

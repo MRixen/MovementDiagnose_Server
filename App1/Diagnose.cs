@@ -9,8 +9,13 @@ namespace App1
     class Diagnose
     {
 
-        private GlobalData globalData = new GlobalData();
+        private GlobalData globalData;
         private int cntr = 0;
+
+        public Diagnose(GlobalData globalData)
+        {
+            this.globalData = globalData;
+        }
 
         public void sendToSocket(string id, string msg)
         {
