@@ -55,7 +55,7 @@ namespace App1
         private static GpioPin pin5, pin6, pin13, pin19;
         private int sensorSelector = -1;
         private int MAX_SENSOR_COUNT = 4;
-        private int sensorCounter = 0;
+        private int sensorCounter = 3;
         private GpioPin[] cs_pin = { pin5, pin6, pin13, pin19 };
         private GpioPinValue[] sensorOFF = { GpioPinValue.High, GpioPinValue.High, GpioPinValue.High, GpioPinValue.High };
         private int[] pinNumbers = { 5, 6, 13, 19 };
@@ -64,13 +64,18 @@ namespace App1
         private ServerComm serverComm;
         private GlobalData globalData;
         private Diagnose diagnose;
+        private int timestamp;
 
         // Measurement intervall
-        private int DELTA_T = 1000;
+        private int DELTA_T = 10;
+
+        // TODO: Add timestamp to data
 
         public MainPage()
         {
             this.InitializeComponent();
+
+            timestamp = 0;
 
             serverComm = new ServerComm();
             globalData = serverComm.getGlobalData();
@@ -85,7 +90,7 @@ namespace App1
 
         private void initGPIO()
         {
-            Debug.Write("Start GPIO init \n");
+            ////Debug.Write("Start GPIO init \n");
 
             var gpio = GpioController.GetDefault();
 
@@ -95,7 +100,7 @@ namespace App1
             }
             try
             {
-                Debug.Write("Set pin values in Init \n");
+                ////Debug.Write("Set pin values in Init \n");
 
                 for (int i = 0; i <= cs_pin.Length-1; i++)
                 {
@@ -106,14 +111,14 @@ namespace App1
             }
             catch (FileLoadException ex)
             {
-                Debug.Write("Exception in x: " + ex + "\n");
+                ////Debug.Write("Exception in x: " + ex + "\n");
             }
 
         }
 
         private async void InitSPIAccel()
         {
-            Debug.Write("InitSPIAccel");
+            //Debug.Write("InitSPIAccel");
             try
             {
                 var settings = new SpiConnectionSettings(SPI_CHIP_SELECT_LINE);
@@ -126,13 +131,13 @@ namespace App1
                 SPIAccel = await SpiDevice.FromIdAsync(dis[0].Id, settings);    /* Create an SpiDevice with our bus controller and SPI settings             */
                 if (SPIAccel == null)
                 {
-                    Debug.Write("SPI Controller is currently in use by another application.");
+                    //Debug.Write("SPI Controller is currently in use by another application.");
                     return;
                 }
             }
             catch (Exception ex)
             {
-                Debug.Write("SPI Initialization failed. Exception: " + ex.Message);
+                //Debug.Write("SPI Initialization failed. Exception: " + ex.Message);
                 return;
             }
 
@@ -149,14 +154,14 @@ namespace App1
             /* Write the register settings */
            // try
            // {
-                Debug.Write("Write the register\n");
-                for (int i = 0; i <= MAX_SENSOR_COUNT - 1; i++)
+                //Debug.Write("Write the register\n");
+                for (int i = 3; i <= MAX_SENSOR_COUNT - 1; i++)
                 {
                     selectSensor(i);
                     SPIAccel.Write(WriteBuf_DataFormat);
                     SPIAccel.Write(WriteBuf_PowerControl);
                     disableAllSensor();
-                    Debug.Write("Write the register 2\n");
+                    //Debug.Write("Write the register 2\n");
                 }
             //}
             /* If the write fails display the error and stop running */
@@ -165,7 +170,7 @@ namespace App1
            //     Text_Status.Text = "Failed to communicate with device: " + ex.Message;
            //     return;
             //}
-            Debug.Write("Create periodicTimer\n");
+            //Debug.Write("Create periodicTimer\n");
             periodicTimer = new Timer(this.TimerCallback, null, 0, DELTA_T);
         }
 
@@ -193,9 +198,9 @@ namespace App1
             string statusText;
             string sendString = " ";
 
-            Debug.Write("TimerCallback\n");
+            //Debug.Write("TimerCallback\n");
 
-            if (sensorCounter > MAX_SENSOR_COUNT-1) sensorCounter = 0;
+            if (sensorCounter > MAX_SENSOR_COUNT-1) sensorCounter = 3;
 
             /* Read and format accelerometer data */
             try
@@ -207,9 +212,10 @@ namespace App1
                 xText = String.Format("x{0:F3}", accel.X);
                 yText = String.Format("y{0:F3}", accel.Y);
                 zText = String.Format("z{0:F3}", accel.Z);
-                Debug.Write("Status acquisition: Running");
+                //Debug.Write("Status acquisition: Running");
 
-                string message = xText + "::" + yText + "::" + zText;
+                //string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
+                string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
                 diagnose.sendToSocket(sensorCounter.ToString(), message);
             }
             catch (Exception ex)
@@ -217,7 +223,7 @@ namespace App1
                 xText = "X Axis: Error";
                 yText = "Y Axis: Error";
                 zText = "Z Axis: Error";
-                Debug.Write("Failed to read from Accelerometer no: " + sensorCounter + " exception: " + ex.Message);
+                //Debug.Write("Failed to read from Accelerometer no: " + sensorCounter + " exception: " + ex.Message);
             }
 
             /* UI updates must be invoked on the UI thread */
@@ -246,11 +252,13 @@ namespace App1
                         Text_Z_Axis_3.Text = zText;
                         break;
                     default:
-                        Debug.Write("Sensor no: " + sensorCounter + " not exist!");
+                        //Debug.Write("Sensor no: " + sensorCounter + " not exist!");
                         break;
                 }
             });
 
+            // Generate pseudo timestamp
+            timestamp = timestamp + DELTA_T;
             sensorCounter += 1;
         }
 

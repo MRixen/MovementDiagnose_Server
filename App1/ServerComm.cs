@@ -12,10 +12,15 @@ using Windows.Storage.Streams;
 
 namespace App1
 {
+
+    // TODO Add delay time
+
+
     class ServerComm
     {
         private  Timer timer;
         private int timerTime = 10;
+        private int i = 0;
 
         public StreamSocketListener Listener { get; set; }
 
@@ -61,22 +66,30 @@ namespace App1
                     bool[] bufferState = globalData.getBufferState();
                     string[] sendbuffer = globalData.getSendBuffer();
 
-                    Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
-                    Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
+                    //Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
+                    //Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
 
-                    for (int i = 0; i <= sendbuffer.Length-1; i++)
-                    {
+                   // for (int i = 0; i <= sendbuffer.Length-1; i++)
+                    //{
                         if (bufferState[i])
                         {
-                            await writer.WriteLineAsync(sendbuffer[i]);
-                            await writer.FlushAsync();
-                            Debug.Write("Send data: " + sendbuffer[i] + "\n");
+                            //await writer.WriteLineAsync(sendbuffer[i]);
+                            writer.Write(sendbuffer[i]);
+                            //writer.WriteLine();
+                            writer.Flush();
+                        //await writer.FlushAsync();
+                            // TODO Add delay time
+
+                           Debug.Write("Send data: " + sendbuffer[i] + "\n");
                         }
                         sendbuffer[i] = "";
                         bufferState[i] = false;
                         globalData.setBufferState(bufferState);
                         globalData.setSendBuffer(sendbuffer);
-                    }
+                    //}
+
+                    if (i < sendbuffer.Length - 1) i++;
+                    else i=0;
 
                     //// Receive data from client (handshake...)
                     //Debug.Write("Receive from client \n");
@@ -98,11 +111,6 @@ namespace App1
         }
 
         private void TimerCallback(object state)
-        {
-
-        }
-
-        private void myTestRoutine()
         {
 
         }
