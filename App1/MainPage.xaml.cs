@@ -23,51 +23,51 @@ using Windows.ApplicationModel.Background;
 using Windows.Storage;
 using Windows.Storage.Search;
 using System.Threading.Tasks;
+using CanTest;
+using Windows.UI;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
 namespace App1
 {
-    struct Acceleration
-    {
-        public double X;
-        public double Y;
-        public double Z;
-    };
-
     public sealed partial class MainPage : Page
     {
         // TODO: Change sensor data to acquire only the constant g values
+        private MCP2515 mcp2515;
+        private Timer periodicTimer, mcpExecutorService;
+        private const byte SPI_CHIP_SELECT_LINE = 0;
+        private byte[] address_TXB0Dm = new byte[8]; // Transmit register 0/2 (3 at all) and byte 0/7 (8 at all)
+        private int DELTA_T = 500, DELTA_T_MCP_EXECUTOR = 1;
+        private byte MAX_TX_BUFFER_SIZE = 8;
+        private int counter;
+        private byte mcpExecutorSelector = 0x01;
+        // TODO Change size
+        private const byte MAX_MCP_EXECUTOR_SELECTOR = 0x01;
 
-        private const byte ACCEL_REG_POWER_CONTROL = 0x2D;  /* Address of the Power Control register                */
-        private const byte ACCEL_REG_DATA_FORMAT = 0x31;    /* Address of the Data Format register                  */
+        // DATA FOR ADXL SENSOR
         private const byte ACCEL_REG_X = 0x32;              /* Address of the X Axis data register                  */
         private const byte ACCEL_REG_Y = 0x34;              /* Address of the Y Axis data register                  */
         private const byte ACCEL_REG_Z = 0x36;              /* Address of the Z Axis data register                  */
         private const byte ACCEL_I2C_ADDR = 0x53;           /* 7-bit I2C address of the ADXL345 with SDO pulled low */
-        private const byte SPI_CHIP_SELECT_LINE = 0;        /* Chip select line to use                              */
         private const byte ACCEL_SPI_RW_BIT = 0x80;         /* Bit used in SPI transactions to indicate read/write  */
         private const byte ACCEL_SPI_MB_BIT = 0x40;         /* Bit used to indicate multi-byte SPI transactions     */
 
-        private SpiDevice SPIAccel;
-        private Timer periodicTimer, saveTimer;
+        struct Acceleration
+        {
+            public double X;
+            public double Y;
+            public double Z;
+        };
 
-        private static GpioPin pin5, pin6, pin13, pin19;
-        private int sensorSelector = -1;
-        private int MAX_SENSOR_COUNT = 4;
-        private int sensorCounter = 3;
-        private GpioPin[] cs_pin = { pin5, pin6, pin13, pin19 };
-        private GpioPinValue[] sensorOFF = { GpioPinValue.High, GpioPinValue.High, GpioPinValue.High, GpioPinValue.High };
-        private int[] pinNumbers = { 5, 6, 13, 19 };
+        private GlobalDataSet globalDataSet;
+        private bool execute_mcpExecutor = false;
 
-        private int counter = 0;
         private ServerComm serverComm;
         private GlobalData globalData;
         private Diagnose diagnose;
         private int timestamp;
-
-        // Measurement intervall
-        private int DELTA_T = 10;
+        private int sensorCounter;
+        private int MAX_SENSOR_COUNT = 1;
 
         // TODO: Add timestamp to data
 
@@ -75,225 +75,253 @@ namespace App1
         {
             this.InitializeComponent();
 
+            // Initilize data
             timestamp = 0;
-
+            sensorCounter = 1;
+            counter = 1;
             serverComm = new ServerComm();
             globalData = serverComm.getGlobalData();
             diagnose = new Diagnose(globalData);
+            mcp2515 = new MCP2515();
+            globalDataSet = new GlobalDataSet();
 
+            // Inititalize raspberry pi and gpio
+            init_raspberry_pi_gpio();
+            init_raspberry_pi_spi();
+
+            // Inititalize mcp2515
+            Task task_mcp2515 = new Task(globalDataSet.init_mcp2515_task);
+            task_mcp2515.Start();
+            task_mcp2515.Wait();
+
+            // Inititalize background tasks
+            mcpExecutorService = new Timer(this.McpExecutorService, null, 0, DELTA_T_MCP_EXECUTOR); // Create timer to display the state of message transmission
+            periodicTimer = new Timer(this.TimerCallback, null, 0, DELTA_T); // Create timer to display the state of message transmission
+
+            // Inititalize server to connect to server
             Task<bool> serverStarted = serverComm.StartServer();
-
-            Unloaded += MainPage_Unloaded;
-            initGPIO();
-            InitSPIAccel();
         }
 
-        private void initGPIO()
+        private void init_raspberry_pi_gpio()
         {
-            ////Debug.Write("Start GPIO init \n");
+            Debug.Write("Start GPIO init \n");
 
-            var gpio = GpioController.GetDefault();
+            var gpioController = GpioController.GetDefault();
 
-            if (gpio == null)
+            if (gpioController == null)
             {
                 return;
             }
             try
             {
-                ////Debug.Write("Set pin values in Init \n");
+                Debug.Write("Configure pins \n");
+                // Configure pins
+                globalDataSet.MCP2515_PIN_CS_SENDER = configureGpio(gpioController, (int)RASPBERRYPI.GPIO.GPIO_19, GpioPinValue.High, GpioPinDriveMode.Output);
+                globalDataSet.MCP2515_PIN_INTE_SENDER = configureGpio(gpioController, (int)RASPBERRYPI.GPIO.GPIO_5, GpioPinDriveMode.Input);
+                globalDataSet.MCP2515_PIN_CS_RECEIVER = configureGpio(gpioController, (int)RASPBERRYPI.GPIO.GPIO_12, GpioPinValue.High, GpioPinDriveMode.Output);
+                globalDataSet.MCP2515_PIN_INTE_RECEIVER = configureGpio(gpioController, (int)RASPBERRYPI.GPIO.GPIO_13, GpioPinDriveMode.Input);
+                globalDataSet.CS_PIN_SENSOR_ADXL1 = configureGpio(gpioController, (int)RASPBERRYPI.GPIO.GPIO_16, GpioPinValue.High, GpioPinDriveMode.Output);
+                globalDataSet.ARDUINO_TEST_PIN = configureGpio(gpioController, (int)RASPBERRYPI.GPIO.GPIO_26, GpioPinValue.Low, GpioPinDriveMode.Output);
 
-                for (int i = 0; i <= cs_pin.Length-1; i++)
-                {
-                    cs_pin[i] = gpio.OpenPin(pinNumbers[i]);
-                    cs_pin[i].Write(GpioPinValue.High);
-                    cs_pin[i].SetDriveMode(GpioPinDriveMode.Output);
-                }
             }
             catch (FileLoadException ex)
             {
-                ////Debug.Write("Exception in x: " + ex + "\n");
+                Debug.Write("Exception in initGPIO: " + ex + "\n");
             }
-
         }
 
-        private async void InitSPIAccel()
+        private async void init_raspberry_pi_spi()
         {
-            //Debug.Write("InitSPIAccel");
+            Debug.Write("Init SPI interface" + "\n");
             try
             {
                 var settings = new SpiConnectionSettings(SPI_CHIP_SELECT_LINE);
-                settings.ClockFrequency = 5000000;                              /* 5MHz is the rated speed of the ADXL345 accelerometer                     */
-                settings.Mode = SpiMode.Mode3;                                  /* The accelerometer expects an idle-high clock polarity, we use Mode3    
-                                                                                 * to set the clock polarity and phase to: CPOL = 1, CPHA = 1         
-                                                                                 */
-                string aqs = SpiDevice.GetDeviceSelector();                     /* Get a selector string that will return all SPI controllers on the system */
-                var dis = await DeviceInformation.FindAllAsync(aqs);            /* Find the SPI bus controller devices with our selector string             */
-                SPIAccel = await SpiDevice.FromIdAsync(dis[0].Id, settings);    /* Create an SpiDevice with our bus controller and SPI settings             */
-                if (SPIAccel == null)
+                settings.ClockFrequency = 5000000;
+                settings.Mode = SpiMode.Mode3;
+                string aqs = SpiDevice.GetDeviceSelector();
+                var dis = await DeviceInformation.FindAllAsync(aqs);
+                globalDataSet.SPIDEVICE = await SpiDevice.FromIdAsync(dis[0].Id, settings);
+                if (globalDataSet.SPIDEVICE == null)
                 {
-                    //Debug.Write("SPI Controller is currently in use by another application.");
+                    Debug.Write("SPI Controller is currently in use by another application. \n");
                     return;
                 }
             }
             catch (Exception ex)
             {
-                //Debug.Write("SPI Initialization failed. Exception: " + ex.Message);
+                Debug.Write("SPI Initialization failed. Exception: " + ex.Message + "\n");
                 return;
             }
 
-            /* 
-             * Initialize the accelerometer:
-             *
-             * For this device, we create 2-byte write buffers:
-             * The first byte is the register address we want to write to.
-             * The second byte is the contents that we want to write to the register. 
-             */
-            byte[] WriteBuf_DataFormat = new byte[] { ACCEL_REG_DATA_FORMAT, 0x01 };        /* 0x01 sets range to +- 4Gs                         */
-            byte[] WriteBuf_PowerControl = new byte[] { ACCEL_REG_POWER_CONTROL, 0x08 };    /* 0x08 puts the accelerometer into measurement mode */
-
-            /* Write the register settings */
-           // try
-           // {
-                //Debug.Write("Write the register\n");
-                for (int i = 3; i <= MAX_SENSOR_COUNT - 1; i++)
+            // Send something to check that spi device is ready
+            globalDataSet.Spi_not_initialized = true;
+            while (globalDataSet.Spi_not_initialized)
+            {
+                bool error = false;
+                try
                 {
-                    selectSensor(i);
-                    SPIAccel.Write(WriteBuf_DataFormat);
-                    SPIAccel.Write(WriteBuf_PowerControl);
-                    disableAllSensor();
-                    //Debug.Write("Write the register 2\n");
+                    globalDataSet.SPIDEVICE.Write(new byte[] { 0xFF });
                 }
-            //}
-            /* If the write fails display the error and stop running */
-           // catch (Exception ex)
-           // {
-           //     Text_Status.Text = "Failed to communicate with device: " + ex.Message;
-           //     return;
-            //}
-            //Debug.Write("Create periodicTimer\n");
-            periodicTimer = new Timer(this.TimerCallback, null, 0, DELTA_T);
+                catch (Exception)
+                {
+                    error = true;
+                }
+                if (!error)
+                {
+                    globalDataSet.Spi_not_initialized = false;
+                    Debug.Write("Spi device ready" + "\n");
+                }
+                else
+                {
+                    Debug.Write("Spi device not ready" + "\n");
+                }
+            }
         }
 
-        private void selectSensor(int selector)
+        private GpioPin configureGpio(GpioController gpioController, int gpioId, GpioPinDriveMode pinDriveMode)
         {
-            // Set all sensor off
-            for (int i = 0; i <= cs_pin.Length - 1; i++) cs_pin[i].Write(sensorOFF[i]);
-            // Enable specific sensor
-            cs_pin[selector].Write(GpioPinValue.Low);
+            GpioPin pinTemp;
+
+            pinTemp = gpioController.OpenPin(gpioId);
+            pinTemp.SetDriveMode(pinDriveMode);
+
+            return pinTemp;
         }
 
-        private void disableAllSensor()
+        private GpioPin configureGpio(GpioController gpioController, int gpioId, GpioPinValue pinValue, GpioPinDriveMode pinDriveMode)
         {
-            for (int i = 0; i <= cs_pin.Length - 1; i++) cs_pin[i].Write(sensorOFF[i]);
-        }
+            GpioPin pinTemp;
 
-        private void MainPage_Unloaded(object sender, object args)
-        {
-            SPIAccel.Dispose();
+            pinTemp = gpioController.OpenPin(gpioId);
+            pinTemp.Write(pinValue);
+            pinTemp.SetDriveMode(pinDriveMode);
+
+            return pinTemp;
         }
 
         private void TimerCallback(object state)
         {
-            string xText, yText, zText;
-            string statusText;
-            string sendString = " ";
+            bool indicatorMode = false;
 
-            //Debug.Write("TimerCallback\n");
-
-            if (sensorCounter > MAX_SENSOR_COUNT-1) sensorCounter = 3;
-
-            /* Read and format accelerometer data */
-            try
+            if (globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.Low)
             {
-                selectSensor(sensorCounter);
-                Acceleration accel = ReadAccel();
-                disableAllSensor();
-
-                xText = String.Format("x{0:F3}", accel.X);
-                yText = String.Format("y{0:F3}", accel.Y);
-                zText = String.Format("z{0:F3}", accel.Z);
-                //Debug.Write("Status acquisition: Running");
-
-                //string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
-                string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
-                diagnose.sendToSocket(sensorCounter.ToString(), message);
+                indicatorMode = true;
             }
-            catch (Exception ex)
+            else
             {
-                xText = "X Axis: Error";
-                yText = "Y Axis: Error";
-                zText = "Z Axis: Error";
-                //Debug.Write("Failed to read from Accelerometer no: " + sensorCounter + " exception: " + ex.Message);
+                indicatorMode = false;
             }
 
             /* UI updates must be invoked on the UI thread */
             var task = this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
             {
-                switch (sensorCounter)
+                if (indicatorMode)
                 {
-                    case 0: 
-                        Text_X_Axis_0.Text = xText;
-                        Text_Y_Axis_0.Text = yText;
-                        Text_Z_Axis_0.Text = zText;
-                        break;
-                    case 1:
-                        Text_X_Axis_1.Text = xText;
-                        Text_Y_Axis_1.Text = yText;
-                        Text_Z_Axis_1.Text = zText;
-                        break;
-                    case 2:
-                        Text_X_Axis_2.Text = xText;
-                        Text_Y_Axis_2.Text = yText;
-                        Text_Z_Axis_2.Text = zText;
-                        break;
-                    case 3:
-                        Text_X_Axis_3.Text = xText;
-                        Text_Y_Axis_3.Text = yText;
-                        Text_Z_Axis_3.Text = zText;
-                        break;
-                    default:
-                        //Debug.Write("Sensor no: " + sensorCounter + " not exist!");
-                        break;
+                    indicator.Background = new SolidColorBrush(Colors.Red);
                 }
-            });
+                else
+                {
+                    indicator.Background = new SolidColorBrush(Colors.Green);
+                }
 
-            // Generate pseudo timestamp
-            timestamp = timestamp + DELTA_T;
-            sensorCounter += 1;
+            });
+        }
+
+        private void McpExecutorService(object state)
+        {
+            // Choose the specific mcp executor by setting the id that is mapped to the message identifier, 
+            // identifier:  00000000 00000001
+            // id:          1
+            // identifier:  00000000 00000002
+            // id:          2
+            // etc.
+            string xText, yText, zText;
+
+
+            // TEST
+            if (execute_mcpExecutor)
+            {
+                // TEST
+                execute_mcpExecutor = false;
+
+                if (mcpExecutorSelector > MAX_MCP_EXECUTOR_SELECTOR)
+                {
+                    mcpExecutorSelector = 0x01;
+                }
+                Debug.Write("Send identifier to mcp executor...");
+                byte identifier = mcpExecutorSelector;
+
+                // Configure tx buffer (msg length, identifier, etc.)
+                globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_init_tx_buffer0(0x02, new byte[] { identifier, 0x00 });
+                for (int i = 0; i < 2; i++)
+                {
+                    globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_load_tx_buffer0(mcp2515.REGISTER_TXB0Dx[i], identifier);
+                    identifier = 0x00;
+                }
+
+                // TODO: Filter the message to receive only senssor value from current selected device
+
+                Debug.Write("Wait for data from mcp executor...");
+                while (globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.Low)
+                {
+                }
+                Acceleration accel = ReadAccel();
+
+                Debug.Write("accel.X: " + accel.X + "\n");
+                Debug.Write("accel.Y: " + accel.Y + "\n");
+                Debug.Write("accel.Z: " + accel.Z + "\n");
+
+                // Show sensor data and set it to global data to send to clients
+                xText = String.Format("x{0:F3}", accel.X);
+                yText = String.Format("y{0:F3}", accel.Y);
+                zText = String.Format("z{0:F3}", accel.Z);
+
+                string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
+                Debug.Write("message: " + message);
+                diagnose.sendToSocket(mcpExecutorSelector.ToString(), message);
+
+                // Increase mcp executor selector to next device
+                mcpExecutorSelector++;
+
+                // Generate pseudo timestamp
+                timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
+            }
+        }
+
+        private void Button_Click_execute_mcpExecutor(object sender, RoutedEventArgs e)
+        {
+            execute_mcpExecutor = true;
+        }
+
+        private void button_Click_test_arduino_mcp2515(object sender, RoutedEventArgs e)
+        {
+            globalDataSet.ARDUINO_TEST_PIN.Write(GpioPinValue.High);
+        }
+
+        private void button_Click_test_arduino_mcp2515_reset(object sender, RoutedEventArgs e)
+        {
+            globalDataSet.ARDUINO_TEST_PIN.Write(GpioPinValue.Low);
         }
 
         private Acceleration ReadAccel()
         {
+            byte[] returnMessage = new byte[mcp2515.MessageSizeAdxl];
             const int ACCEL_RES = 1024;         /* The ADXL345 has 10 bit resolution giving 1024 unique values                     */
             const int ACCEL_DYN_RANGE_G = 8;    /* The ADXL345 had a total dynamic range of 8G, since we're configuring it to +-4G */
             const int UNITS_PER_G = ACCEL_RES / ACCEL_DYN_RANGE_G;  /* Ratio of raw int values to G units                          */
 
-            byte[] ReadBuf;
-            byte[] RegAddrBuf;
-
-            /* 
-             * Read from the accelerometer 
-             * We first write the address of the X-Axis register, then read all 3 axes into ReadBuf
-             */
-            ReadBuf = new byte[6 + 1];      /* Read buffer of size 6 bytes (2 bytes * 3 axes) + 1 byte padding */
-            RegAddrBuf = new byte[1 + 6];   /* Register address buffer of size 1 byte + 6 bytes padding        */
-                                            /* Register address we want to read from with read and multi-byte bit set                          */
-            RegAddrBuf[0] = ACCEL_REG_X | ACCEL_SPI_RW_BIT | ACCEL_SPI_MB_BIT;
-            SPIAccel.TransferFullDuplex(RegAddrBuf, ReadBuf);
-            Array.Copy(ReadBuf, 1, ReadBuf, 0, 6);  /* Discard first dummy byte from read                      */
-
-            /* Check the endianness of the system and flip the bytes if necessary */
-            if (!BitConverter.IsLittleEndian)
+            globalDataSet.MCP2515_PIN_CS_RECEIVER.Write(GpioPinValue.Low);
+            for (int i = 0; i < mcp2515.MessageSizeAdxl; i++)
             {
-                Array.Reverse(ReadBuf, 0, 2);
-                Array.Reverse(ReadBuf, 2, 2);
-                Array.Reverse(ReadBuf, 4, 2);
+                returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_rx_buffer0(mcp2515.REGISTER_RXB0Dx[i]);
+                Debug.Write("Read sensor data: " + returnMessage[i].ToString() + " from buffer 0 at byte" + mcp2515.REGISTER_RXB0Dx[i].ToString() + "\n");
             }
+            globalDataSet.MCP2515_PIN_CS_RECEIVER.Write(GpioPinValue.High);
 
             /* In order to get the raw 16-bit data values, we need to concatenate two 8-bit bytes for each axis */
-            short AccelerationRawX = BitConverter.ToInt16(ReadBuf, 0);
-            short AccelerationRawY = BitConverter.ToInt16(ReadBuf, 2);
-            short AccelerationRawZ = BitConverter.ToInt16(ReadBuf, 4);
+            short AccelerationRawX = BitConverter.ToInt16(returnMessage, 0);
+            short AccelerationRawY = BitConverter.ToInt16(returnMessage, 2);
+            short AccelerationRawZ = BitConverter.ToInt16(returnMessage, 4);
 
             /* Convert raw values to G's */
             Acceleration accel;
@@ -304,6 +332,34 @@ namespace App1
             return accel;
         }
 
+        private void WriteAccel()
+        {
+            // Write sensor raw data to mcp2515 
+
+            byte[] ReadBuf;
+            byte[] RegAddrBuf;
+
+            ReadBuf = new byte[6 + 1];      // Read buffer of size 6 bytes (2 bytes * 3 axes)
+            RegAddrBuf = new byte[1 + 6];
+            RegAddrBuf[0] = ACCEL_REG_X | ACCEL_SPI_RW_BIT | ACCEL_SPI_MB_BIT;
+            globalDataSet.CS_PIN_SENSOR_ADXL1.Write(GpioPinValue.Low);
+            globalDataSet.SPIDEVICE.TransferFullDuplex(RegAddrBuf, ReadBuf);
+            globalDataSet.CS_PIN_SENSOR_ADXL1.Write(GpioPinValue.High);
+
+            // Write sensor data to tx buffer
+            // globalDataSet.MCP2515_PIN_CS_SENDER.Write(GpioPinValue.Low);
+            for (int i = 0; i < mcp2515.MessageSizeAdxl; i++)
+            {
+                globalDataSet.LOGIC_MCP2515_SENDER.mcp2515_load_tx_buffer0(mcp2515.REGISTER_TXB0Dx[i], ReadBuf[i]);
+                Debug.Write("Write sensor data: " + ReadBuf[i].ToString() + " in buffer 0 at byte " + mcp2515.REGISTER_TXB0Dx[i].ToString() + "\n");
+            }
+            // globalDataSet.MCP2515_PIN_CS_SENDER.Write(GpioPinValue.High);
+        }
+
+        private void MainPage_Unloaded(object sender, object args)
+        {
+            globalDataSet.SPIDEVICE.Dispose();
+        }
     }
 }
 
