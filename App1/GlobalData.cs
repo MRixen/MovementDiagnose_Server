@@ -10,6 +10,10 @@ namespace App1
 {
     class GlobalData
     {
+
+        private bool mcpExecutionIsActive = false;
+        private bool stopAllOperations = false;
+
         public string[] sendBuffer = {"", "", "", "", "", "", "", "", "", "",
                                         "", "", "", "", "", "", "", "", "", "",
                                         "", "", "", "", "", "", "", "", "", "",
@@ -18,7 +22,33 @@ namespace App1
                                         false, false, false, false, false, false, false, false, false, false,
                                         false, false, false, false, false, false, false, false, false, false,
                                         false, false, false, false, false};
-        
+
+        public bool clientIsConnected
+        {
+            get
+            {
+                return mcpExecutionIsActive;
+            }
+
+            set
+            {
+                mcpExecutionIsActive = value;
+            }
+        }
+
+        public bool StopAllOperations
+        {
+            get
+            {
+                return stopAllOperations;
+            }
+
+            set
+            {
+                stopAllOperations = value;
+            }
+        }
+
         public string[] getSendBuffer()
         {
             return sendBuffer;
@@ -38,6 +68,7 @@ namespace App1
         {
             this.bufferState = bufferState;
         }
+
 
 }
 }

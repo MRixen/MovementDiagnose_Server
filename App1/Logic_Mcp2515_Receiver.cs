@@ -34,18 +34,27 @@ namespace CanTest
 
             // Reset chip to set in operation mode
             mcp2515_execute_reset_command();
+            Task.Delay(-1).Wait(100);
 
             // Configure bit timing
             mcp2515_configureCanBus();
+            Task.Delay(-1).Wait(100);
 
             // Configure interrupts
             mcp2515_configureInterrupts();
+            Task.Delay(-1).Wait(100);
 
             // Configure bit masks and filters that we can receive everything 
             mcp2515_configureMasksFilters();
+            Task.Delay(-1).Wait(100);
 
             // Set device to normal mode
             mcp2515_switchMode(mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.NORMAL_MODE, mcp2515.CONTROL_REGISTER_CANCTRL_VALUE.NORMAL_MODE);
+            Task.Delay(-1).Wait(100);
+
+            // Reset all failures
+            globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+            Task.Delay(-1).Wait(100);
         }
 
         private void mcp2515_configureCanBus()
@@ -137,7 +146,7 @@ namespace CanTest
         public void mcp2515_load_tx_buffer0(byte byteId, byte data)
         {
             // Send message to mcp2515 tx buffer
-            Debug.Write("Load tx buffer 0 at byte " + byteId.ToString() + "\n");
+            //Debug.Write("Load tx buffer 0 at byte " + byteId.ToString() + " with " + data + "\n");
             byte[] spiMessage = new byte[2];
 
             // Set data to tx buffer 0

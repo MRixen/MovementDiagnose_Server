@@ -18,20 +18,17 @@ namespace App1
 
     class ServerComm
     {
-        private  Timer timer;
-        private int timerTime = 10;
         private int i = 0;
 
         public StreamSocketListener Listener { get; set; }
 
         private GlobalData globalData = new GlobalData();
+        private MainPage mainPage;
 
         // This is the static method used to start listening for connections.
 
         public async Task<bool> StartServer()
         {
-            timer = new Timer(TimerCallback, null, 0, timerTime);
-
             Listener = new StreamSocketListener();
             // Removes binding first in case it was already bound previously.
             Listener.ConnectionReceived -= Listener_ConnectionReceived;
@@ -53,15 +50,23 @@ namespace App1
         private async void Listener_ConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
         {
             var remoteAddress = args.Socket.Information.RemoteAddress.ToString();
+
+            // TODO Wait some time to get things ready
+
+            Debug.Write("Client is connected. \n");
+
+            // Set flag to begin the sending of sensor data (in MainPage) when client is connected
+            globalData.clientIsConnected = true;
+
+            Stream outStream = args.Socket.OutputStream.AsStreamForWrite();
+            StreamWriter writer = new StreamWriter(outStream);
+
             while (true)
             {
                 try
                 {
                     //Send data to client
                     //Debug.Write("Send to client \n");
-                    Stream outStream = args.Socket.OutputStream.AsStreamForWrite();
-                    StreamWriter writer = new StreamWriter(outStream);
-
 
                     bool[] bufferState = globalData.getBufferState();
                     string[] sendbuffer = globalData.getSendBuffer();
@@ -69,27 +74,27 @@ namespace App1
                     //Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
                     //Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
 
-                   // for (int i = 0; i <= sendbuffer.Length-1; i++)
+                    // for (int i = 0; i <= sendbuffer.Length-1; i++)
                     //{
-                        if (bufferState[i])
-                        {
-                            //await writer.WriteLineAsync(sendbuffer[i]);
-                            writer.Write(sendbuffer[i]);
-                            //writer.WriteLine();
-                            writer.Flush();
+                    if (bufferState[i])
+                    {                        
+                        //await writer.WriteLineAsync(sendbuffer[i]);
+                        writer.Write(sendbuffer[i]);
+                        //writer.WriteLine();
+                        writer.Flush();
                         //await writer.FlushAsync();
-                            // TODO Add delay time
-
-                           Debug.Write("Send data: " + sendbuffer[i] + "\n");
-                        }
-                        sendbuffer[i] = "";
-                        bufferState[i] = false;
-                        globalData.setBufferState(bufferState);
-                        globalData.setSendBuffer(sendbuffer);
+                        // TODO Add delay time
+                        //globalData.McpExecutionIsActive = true;
+                        Debug.Write("Send data to client / database: " + sendbuffer[i] + "\n");
+                    }
+                    sendbuffer[i] = "";
+                    bufferState[i] = false;
+                    globalData.setBufferState(bufferState);
+                    globalData.setSendBuffer(sendbuffer);
                     //}
 
                     if (i < sendbuffer.Length - 1) i++;
-                    else i=0;
+                    else i = 0;
 
                     //// Receive data from client (handshake...)
                     //Debug.Write("Receive from client \n");
@@ -108,11 +113,6 @@ namespace App1
                     return;
                 }
             }
-        }
-
-        private void TimerCallback(object state)
-        {
-
         }
 
         public GlobalData getGlobalData()

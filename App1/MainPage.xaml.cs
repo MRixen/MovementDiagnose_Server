@@ -32,17 +32,19 @@ namespace App1
 {
     public sealed partial class MainPage : Page
     {
+        // TODO: Add something to shutdown everything (with stopAllOperations flag)
         // TODO: Change sensor data to acquire only the constant g values
         private MCP2515 mcp2515;
-        private Timer periodicTimer, mcpExecutorService;
+        private Timer periodicTimer, mcpExecutorTimer, errorTimer;
         private const byte SPI_CHIP_SELECT_LINE = 0;
         private byte[] address_TXB0Dm = new byte[8]; // Transmit register 0/2 (3 at all) and byte 0/7 (8 at all)
-        private int DELTA_T = 500, DELTA_T_MCP_EXECUTOR = 1;
+        private int DELTA_T_TIMER_CALLBACK = 500, DELTA_T_MCP_EXECUTOR = 10, DELTA_T_ERROR_TIMER = 10;
         private byte MAX_TX_BUFFER_SIZE = 8;
         private int counter;
-        private byte mcpExecutorSelector = 0x01;
         // TODO Change size
-        private const byte MAX_MCP_EXECUTOR_SELECTOR = 0x01;
+        private const byte MAX_MCP_DEVICE_COUNTER = 0; // max. 255
+        private int mcpDeviceCounter;
+        private byte[] mcpDevice = new byte[MAX_MCP_DEVICE_COUNTER];
 
         // DATA FOR ADXL SENSOR
         private const byte ACCEL_REG_X = 0x32;              /* Address of the X Axis data register                  */
@@ -60,7 +62,6 @@ namespace App1
         };
 
         private GlobalDataSet globalDataSet;
-        private bool execute_mcpExecutor = false;
 
         private ServerComm serverComm;
         private GlobalData globalData;
@@ -68,6 +69,18 @@ namespace App1
         private int timestamp;
         private int sensorCounter;
         private int MAX_SENSOR_COUNT = 1;
+        private bool sendRequest;
+        private int MAX_DELAY_TIME = 100;
+        private int MAX_WAIT_TIME = 800;
+        private bool executionFinished;
+        private int stepCounter;
+        private Stopwatch timeStopper = new Stopwatch();
+
+        private Task task_mcpExecutorService;
+
+        // DATA FOR ERROR HANDLING
+        private const int MAX_ERROR_COUNTER_TRANSFER = 5;
+        private int errorCounterTransfer;
 
         // TODO: Add timestamp to data
 
@@ -76,9 +89,14 @@ namespace App1
             this.InitializeComponent();
 
             // Initilize data
+            executionFinished = false;
+            errorCounterTransfer = 0;
+            stepCounter = 0;
+            sendRequest = true;
             timestamp = 0;
             sensorCounter = 1;
             counter = 1;
+            mcpDeviceCounter = 0;
             serverComm = new ServerComm();
             globalData = serverComm.getGlobalData();
             diagnose = new Diagnose(globalData);
@@ -90,15 +108,21 @@ namespace App1
             init_raspberry_pi_spi();
 
             // Inititalize mcp2515
-            Task task_mcp2515 = new Task(globalDataSet.init_mcp2515_task);
-            task_mcp2515.Start();
-            task_mcp2515.Wait();
+            Task task_initMcp2515 = new Task(globalDataSet.init_mcp2515_task);
+            task_initMcp2515.Start();
+            task_initMcp2515.Wait();
+
+
+            task_mcpExecutorService = new Task(mcpExecutorService_task);
+            task_mcpExecutorService.Start();
 
             // Inititalize background tasks
-            mcpExecutorService = new Timer(this.McpExecutorService, null, 0, DELTA_T_MCP_EXECUTOR); // Create timer to display the state of message transmission
-            periodicTimer = new Timer(this.TimerCallback, null, 0, DELTA_T); // Create timer to display the state of message transmission
+            mcpExecutorTimer = new Timer(this.McpExecutorTimer, null, 0, DELTA_T_MCP_EXECUTOR); // Create timer to display the state of message transmission
+            periodicTimer = new Timer(this.TimerCallback, null, 0, DELTA_T_TIMER_CALLBACK); // Create timer to display the state of message transmission
+            errorTimer = new Timer(this.ErrorTimer, null, 0, DELTA_T_ERROR_TIMER); // Create timer to display the state of message transmission
 
-            // Inititalize server to connect to server
+
+            // Inititalize server
             Task<bool> serverStarted = serverComm.StartServer();
         }
 
@@ -227,80 +251,42 @@ namespace App1
             });
         }
 
-        private void McpExecutorService(object state)
+        private void ErrorTimer(object state)
         {
-            // Choose the specific mcp executor by setting the id that is mapped to the message identifier, 
-            // identifier:  00000000 00000001
-            // id:          1
-            // identifier:  00000000 00000002
-            // id:          2
-            // etc.
-            string xText, yText, zText;
-
-
-            // TEST
-            if (execute_mcpExecutor)
+            // TODO Show red blinking warning message on screen
+            if (errorCounterTransfer >= MAX_ERROR_COUNTER_TRANSFER)
             {
-                // TEST
-                execute_mcpExecutor = false;
-
-                if (mcpExecutorSelector > MAX_MCP_EXECUTOR_SELECTOR)
-                {
-                    mcpExecutorSelector = 0x01;
-                }
-                Debug.Write("Send identifier to mcp executor...");
-                byte identifier = mcpExecutorSelector;
-
-                // Configure tx buffer (msg length, identifier, etc.)
-                globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_init_tx_buffer0(0x02, new byte[] { identifier, 0x00 });
-                for (int i = 0; i < 2; i++)
-                {
-                    globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_load_tx_buffer0(mcp2515.REGISTER_TXB0Dx[i], identifier);
-                    identifier = 0x00;
-                }
-
-                // TODO: Filter the message to receive only senssor value from current selected device
-
-                Debug.Write("Wait for data from mcp executor...");
-                while (globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.Low)
-                {
-                }
-                Acceleration accel = ReadAccel();
-
-                Debug.Write("accel.X: " + accel.X + "\n");
-                Debug.Write("accel.Y: " + accel.Y + "\n");
-                Debug.Write("accel.Z: " + accel.Z + "\n");
-
-                // Show sensor data and set it to global data to send to clients
-                xText = String.Format("x{0:F3}", accel.X);
-                yText = String.Format("y{0:F3}", accel.Y);
-                zText = String.Format("z{0:F3}", accel.Z);
-
-                string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
-                Debug.Write("message: " + message);
-                diagnose.sendToSocket(mcpExecutorSelector.ToString(), message);
-
-                // Increase mcp executor selector to next device
-                mcpExecutorSelector++;
-
-                // Generate pseudo timestamp
-                timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
+                Debug.Write("ERROR TRANSFER - STOP ALL OPERATIONS" +  "\n");
+                globalData.StopAllOperations = true;
+                errorCounterTransfer = 0;
             }
         }
 
-        private void Button_Click_execute_mcpExecutor(object sender, RoutedEventArgs e)
+        private void McpExecutorTimer(object state)
         {
-            execute_mcpExecutor = true;
+            if (globalData.clientIsConnected)
+            {
+                //if (!(task_mcpExecutorService.Status == TaskStatus.Running) && ((task_mcpExecutorService.Status == TaskStatus.Created) || (task_mcpExecutorService.Status == TaskStatus.RanToCompletion)) )
+                //{
+                //    task_mcpExecutorService.Start();
+                //}
+            }
         }
 
-        private void button_Click_test_arduino_mcp2515(object sender, RoutedEventArgs e)
+        private byte[] generateIdentifier(int identifierTemp)
         {
-            globalDataSet.ARDUINO_TEST_PIN.Write(GpioPinValue.High);
-        }
+            byte[] identifier = BitConverter.GetBytes(identifierTemp);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(identifier);
+                Debug.Write("IsLittleEndian \n");
+            }
 
-        private void button_Click_test_arduino_mcp2515_reset(object sender, RoutedEventArgs e)
-        {
-            globalDataSet.ARDUINO_TEST_PIN.Write(GpioPinValue.Low);
+            Debug.Write("Convert " + identifierTemp + " to " + identifier[0] + " and " + identifier[1] + "\n");
+            Debug.Write("Convert " + identifierTemp + " to " + identifier + "\n");
+
+            // Return max 2 bytes
+            return identifier;
         }
 
         private Acceleration ReadAccel()
@@ -314,7 +300,7 @@ namespace App1
             for (int i = 0; i < mcp2515.MessageSizeAdxl; i++)
             {
                 returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_rx_buffer0(mcp2515.REGISTER_RXB0Dx[i]);
-                Debug.Write("Read sensor data: " + returnMessage[i].ToString() + " from buffer 0 at byte" + mcp2515.REGISTER_RXB0Dx[i].ToString() + "\n");
+                //Debug.Write("Read sensor data: " + returnMessage[i].ToString() + " from buffer 0 at byte" + mcp2515.REGISTER_RXB0Dx[i].ToString() + "\n");
             }
             globalDataSet.MCP2515_PIN_CS_RECEIVER.Write(GpioPinValue.High);
 
@@ -359,6 +345,100 @@ namespace App1
         private void MainPage_Unloaded(object sender, object args)
         {
             globalDataSet.SPIDEVICE.Dispose();
+        }
+
+        public async void mcpExecutorService_task()
+        {
+            await Task.Run(() => execServ_mcp2515());
+        }
+
+        private void execServ_mcp2515()
+        {
+            string xText, yText, zText;
+            while (!globalData.StopAllOperations)
+            {
+                if (globalData.clientIsConnected)
+                {
+                    // Send request to mcp2515 devices to pre-save sensor data and check handshake content
+                    if (sendRequestToMcp2515(255, 0, true))
+                    {
+                        // TODO Change timestamp to system clock
+                        for (int i = 0; i <= MAX_MCP_DEVICE_COUNTER; i++)
+                        {
+                            if (sendRequestToMcp2515(i, 0, false))
+                            {
+                                Debug.Write("Read sensor values from device " + i + "\n");
+
+                                //// Read the sensor data
+                                //Acceleration accel = ReadAccel();
+
+                                ////Debug.Write("accel.X: " + accel.X + "\n");
+                                ////Debug.Write("accel.Y: " + accel.Y + "\n");
+                                ////Debug.Write("accel.Z: " + accel.Z + "\n");
+
+                                //// Create string strings with sensor content
+                                //xText = String.Format("x{0:F3}", accel.X);
+                                //yText = String.Format("y{0:F3}", accel.Y);
+                                //zText = String.Format("z{0:F3}", accel.Z);
+
+                                //string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
+                                ////Debug.Write("message: " + message + "\n");
+                                //diagnose.sendToSocket(i.ToString(), message);
+
+                                //// Generate pseudo timestamp
+                                //timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
+                            }
+                        }
+                    }
+                    // Add delay between execution
+                    Task.Delay(-1).Wait(DELTA_T_MCP_EXECUTOR);
+                }
+            }
+        }
+
+        private bool sendRequestToMcp2515(int requestIdLow, int requestIdHigh, bool checkMessage)
+        {
+            byte[] identifier = new byte[2];
+            byte[] retMsg = new byte[2];
+
+            identifier[0] = Convert.ToByte(requestIdLow);
+            identifier[1] = Convert.ToByte(requestIdHigh);
+
+            Debug.Write("Init tx buffer 0" + "\n");
+            globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_init_tx_buffer0(0x02, identifier);
+
+            Debug.Write("Send request with id " + requestIdLow + " and " + requestIdHigh + "\n");
+            for (int i = 0; i < 2; i++)
+            {
+                globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_load_tx_buffer0(mcp2515.REGISTER_TXB0Dx[i], identifier[i]);
+            }
+
+            // Wait for handshake from one of the sensors that the request is received
+            Debug.Write("Wait for handshake / data from mcp device" + "\n");
+
+            timeStopper.Reset();
+            timeStopper.Start();
+            while ((globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.High) && (timeStopper.ElapsedMilliseconds <= MAX_WAIT_TIME))
+            {
+            }
+            timeStopper.Stop();
+
+            if (timeStopper.ElapsedMilliseconds > MAX_WAIT_TIME)
+            {
+                Debug.Write("Abort waiting. Max. waiting time reached." + "\n");
+                errorCounterTransfer++;
+            }
+            else Debug.Write("Finished waiting" + "\n");
+
+            // Check handshake message
+            if (checkMessage)
+            {
+                Debug.Write("Check handshake from mcp device" + "\n");
+                for (int i = 0; i < 2; i++) retMsg[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_rx_buffer0(mcp2515.REGISTER_RXB0Dx[i]);
+                if ((retMsg[0] == identifier[0]) & (retMsg[1] == identifier[1])) return true;
+                else return false;
+            }
+            else return true;
         }
     }
 }
