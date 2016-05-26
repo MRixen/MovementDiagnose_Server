@@ -15,9 +15,9 @@ namespace CanTest
         private byte cONTROL_REGISTER_CANCTRL = 0x0F;
         private byte cONTROL_REGISTER_TEC = 0x1C;
         private byte cONTROL_REGISTER_REGISTER_REC = 0x1D;
-        private byte cONTROL_REGISTER_CNF3 = 0x28;
-        private byte cONTROL_REGISTER_CNF2 = 0x29;
         private byte cONTROL_REGISTER_CNF1 = 0x2A;
+        private byte cONTROL_REGISTER_CNF2 = 0x29;
+        private byte cONTROL_REGISTER_CNF3 = 0x28;
         private byte cONTROL_REGISTER_CANINTE = 0x2B;
         private byte cONTROL_REGISTER_CANINTF = 0x2C;
         private byte cONTROL_REGISTER_EFLG = 0x2D;
@@ -49,6 +49,15 @@ namespace CanTest
         private byte rEGISTER_RXB0D6 = 0x6C;
         private byte rEGISTER_RXB0D7 = 0x6D;
 
+        private byte rEGISTER_RXB1D0 = 0x76;
+        private byte rEGISTER_RXB1D1 = 0x77;
+        private byte rEGISTER_RXB1D2 = 0x78;
+        private byte rEGISTER_RXB1D3 = 0x79;
+        private byte rEGISTER_RXB1D4 = 0x7A;
+        private byte rEGISTER_RXB1D5 = 0x7B;
+        private byte rEGISTER_RXB1D6 = 0x7C;
+        private byte rEGISTER_RXB1D7 = 0x7D;
+
         // SPI INSTRUCTIONS
         private byte sPI_INSTRUCTION_RESET = 0xC0;
         private byte sPI_INSTRUCTION_READ = 0x03;
@@ -60,9 +69,9 @@ namespace CanTest
         private byte sPI_INSTRUCTION_RTS_BUFFER0 = 0x81;
         private byte sPI_INSTRUCTION_RTS_BUFFER1 = 0x82;
         private byte sPI_INSTRUCTION_RTS_BUFFER2 = 0x84;
-        private byte sPI_INSTRUCTION_READ_STATUS = 0xC0;
-        private byte sPI_INSTRUCTION_RX_STATUS = 0xC0;
-        private byte sPI_INSTRUCTION_BIT_MODIFY = 0xC0;
+        private byte sPI_INSTRUCTION_READ_STATUS = 0xA0;
+        private byte sPI_INSTRUCTION_RX_STATUS = 0xB0;
+        private byte sPI_INSTRUCTION_BIT_MODIFY = 0x05;
 
         // GLOBAL DATA
         private cONTROL_REGISTER_CNFx_VALUE control_register_cnfx_value;
@@ -73,6 +82,7 @@ namespace CanTest
         private rEGISTER_TXB0SIDH_VALUE register_txb0sidh_value;
         private byte[] rEGISTER_TXB0Dx = new byte[8];
         private byte[] rEGISTER_RXB0Dx = new byte[8];
+        private byte[] rEGISTER_RXB1Dx = new byte[8];
         private byte messageSizeAdxl;
 
         public struct cONTROL_REGISTER_CANSTAT_VALUE
@@ -147,9 +157,9 @@ namespace CanTest
             // Set values for bit timing
             // Fosc = 8Mhz
             // Tosc = 125ns
-            control_register_cnfx_value.CNF1 = 0x03; // Baud rate prescaler calculated with application (Fosc = 8Mhz and CANspeed = 125kHz)
-            control_register_cnfx_value.CNF2 = 0xB8; // BTLMODE = 1 (PHaseSegment 2 is configured with CNF 3) and PhaseSegment 1 = 8xTQ (7+1)
-            control_register_cnfx_value.CNF3 = 0x05; // Set PhaseSegment 2 = 6xTQ (5+1)
+            control_register_cnfx_value.CNF1 = 0x03; // Baud rate prescaler
+            control_register_cnfx_value.CNF2 = 0x90; // BTLMODE = 1 and PhaseSegment1 = 2
+            control_register_cnfx_value.CNF3 = 0x02; // PhaseSegment2 = 2
         }
 
         private void configureGlobalData()
@@ -198,6 +208,16 @@ namespace CanTest
             rEGISTER_RXB0Dx[5] = rEGISTER_RXB0D5;
             rEGISTER_RXB0Dx[6] = rEGISTER_RXB0D6;
             rEGISTER_RXB0Dx[7] = rEGISTER_RXB0D7;
+
+            // Set addresss for rx buffer 1
+            rEGISTER_RXB1Dx[0] = rEGISTER_RXB1D0;
+            rEGISTER_RXB1Dx[1] = rEGISTER_RXB1D1;
+            rEGISTER_RXB1Dx[2] = rEGISTER_RXB1D2;
+            rEGISTER_RXB1Dx[3] = rEGISTER_RXB1D3;
+            rEGISTER_RXB1Dx[4] = rEGISTER_RXB1D4;
+            rEGISTER_RXB1Dx[5] = rEGISTER_RXB1D5;
+            rEGISTER_RXB1Dx[6] = rEGISTER_RXB1D6;
+            rEGISTER_RXB1Dx[7] = rEGISTER_RXB1D7;
 
             // Set data for interrupt flags
             control_register_canintf_value.RESET_ALL_IF = 0x00;
@@ -672,6 +692,19 @@ namespace CanTest
             set
             {
                 rEGISTER_RXB0Dx = value;
+            }
+        }
+
+        public byte[] REGISTER_RXB1Dx
+        {
+            get
+            {
+                return rEGISTER_RXB1Dx;
+            }
+
+            set
+            {
+                rEGISTER_RXB1Dx = value;
             }
         }
 

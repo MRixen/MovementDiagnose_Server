@@ -11,6 +11,8 @@ namespace CanTest
 {
     class GlobalDataSet
     {
+        private int mAX_WAIT_TIME = 800;
+        private int TIME_SLOW_DOWN_CODE = 5;
         private bool spi_not_initialized = true;
         private GpioPin mCP2515_PIN_CS_SENDER, mCP2515_PIN_INTE_SENDER;
         private GpioPin mCP2515_PIN_CS_RECEIVER, mCP2515_PIN_INTE_RECEIVER;
@@ -19,12 +21,27 @@ namespace CanTest
         private SpiDevice spiDevice;
         private Logic_Mcp2515_Sender logic_Mcp2515_Sender;
         private Logic_Mcp2515_Receiver logic_Mcp2515_Receiver;
+        private bool debugMode;
 
         public GlobalDataSet()
         {
+            debugMode = false;
             mcp2515 = new MCP2515();
             logic_Mcp2515_Sender = new Logic_Mcp2515_Sender(this);
             logic_Mcp2515_Receiver = new Logic_Mcp2515_Receiver(this);
+        }
+
+        public int MAX_WAIT_TIME
+        {
+            get
+            {
+                return mAX_WAIT_TIME;
+            }
+
+            set
+            {
+                mAX_WAIT_TIME = value;
+            }
         }
 
         public async void init_mcp2515_task()
@@ -52,7 +69,7 @@ namespace CanTest
             byte[] WriteBuf_DataFormat = new byte[] { ACCEL_REG_DATA_FORMAT, 0x01 };        /* 0x01 sets range to +- 4Gs                         */
             byte[] WriteBuf_PowerControl = new byte[] { ACCEL_REG_POWER_CONTROL, 0x08 };    /* 0x08 puts the accelerometer into measurement mode */
 
-            Debug.Write("Start Sensor init \n");
+            if(debugMode) Debug.Write("Start Sensor init \n");
 
             CS_PIN_SENSOR_ADXL1.Write(GpioPinValue.Low);
             SPIDEVICE.Write(WriteBuf_DataFormat);
@@ -204,11 +221,38 @@ namespace CanTest
             }
         }
 
+        internal MCP2515 Mcp2515
+        {
+            get
+            {
+                return mcp2515;
+            }
+
+            set
+            {
+                mcp2515 = value;
+            }
+        }
+
+        public bool DebugMode
+        {
+            get
+            {
+                return debugMode;
+            }
+
+            set
+            {
+                debugMode = value;
+            }
+        }
+
         public void writeSimpleCommandSpi(byte command, GpioPin cs_pin)
         {
             cs_pin.Write(GpioPinValue.Low);
             spiDevice.Write(new byte[] { command });
             cs_pin.Write(GpioPinValue.High);
+            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
         }
 
         public byte[] readSimpleCommandSpi(byte registerAddress, GpioPin cs_pin)
@@ -220,6 +264,7 @@ namespace CanTest
             spiDevice.Write(new byte[] { mcp2515.SPI_INSTRUCTION_READ, registerAddress });
             spiDevice.Read(returnMessage);
             cs_pin.Write(GpioPinValue.High);
+            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
 
             return returnMessage;
         }
@@ -243,6 +288,7 @@ namespace CanTest
 
             // Disable device
             cs_pin.Write(GpioPinValue.High);
+            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
 
             return returnMessage[0];
         }
@@ -256,6 +302,96 @@ namespace CanTest
             spiDevice.Write(new byte[] { mcp2515.SPI_INSTRUCTION_WRITE });
             spiDevice.Write(spiMessage);
             cs_pin.Write(GpioPinValue.High);
+            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
         }
+
+        public byte executeReadStateCommand(GpioPin cs_pin)
+        {
+            byte[] returnMessage = new byte[1];
+            byte[] sendMessage = new byte[1];
+
+            // Enable device
+            cs_pin.Write(GpioPinValue.Low);
+
+            // Write spi instruction read  
+            sendMessage[0] = mcp2515.SPI_INSTRUCTION_READ_STATUS;
+            spiDevice.Write(sendMessage);
+            spiDevice.Read(returnMessage);
+
+            // Disable device
+            cs_pin.Write(GpioPinValue.High);
+            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
+
+            return returnMessage[0];
+        }
+
+
+
+
+
+
+
+
+
+
+
+        private bool mcpExecutionIsActive = false;
+        private bool stopAllOperations = false;
+
+        public string[] sendBuffer = {"", "", "", "", "", "", "", "", "", "",
+                                        "", "", "", "", "", "", "", "", "", "",
+                                        "", "", "", "", "", "", "", "", "", "",
+                                        "", "", "", "", ""};
+        public bool[] bufferState = {false, false, false, false, false, false, false, false, false, false,
+                                        false, false, false, false, false, false, false, false, false, false,
+                                        false, false, false, false, false, false, false, false, false, false,
+                                        false, false, false, false, false};
+
+        public bool clientIsConnected
+        {
+            get
+            {
+                return mcpExecutionIsActive;
+            }
+
+            set
+            {
+                mcpExecutionIsActive = value;
+            }
+        }
+
+        public bool StopAllOperations
+        {
+            get
+            {
+                return stopAllOperations;
+            }
+
+            set
+            {
+                stopAllOperations = value;
+            }
+        }
+
+        public string[] getSendBuffer()
+        {
+            return sendBuffer;
+        }
+
+        public void setSendBuffer(string[] sendBuffer)
+        {
+            this.sendBuffer = sendBuffer;
+        }
+
+        public bool[] getBufferState()
+        {
+            return bufferState;
+        }
+
+        public void setBufferState(bool[] bufferState)
+        {
+            this.bufferState = bufferState;
+        }
+
     }
 }

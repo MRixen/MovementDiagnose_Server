@@ -9,7 +9,7 @@
 
     <Grid Background="Black" Margin="0,0,-172,0" >
         <StackPanel Grid.Column="0" Grid.Row="0" HorizontalAlignment="Center" Name="StackPanel" VerticalAlignment="Top">
-            <TextBlock x:Name="Title" HorizontalAlignment="Center" Margin="0,0,0,0" TextWrapping="Wrap" Text="Movement Diagnose" VerticalAlignment="Top"  Width="600" FontSize="36" TextAlignment="Center"/>
+            <TextBlock x:Name="Title" HorizontalAlignment="Center" Margin="0,0,0,0" TextWrapping="Wrap" Text="Movement Diagnose" VerticalAlignment="Top"  Width="600" FontSize="36" TextAlignment="Center" Foreground="#FF193986"/>
         </StackPanel>
         <Frame x:Name="indicator" Content="" HorizontalAlignment="Left" Margin="51,77,0,0" VerticalAlignment="Top" Height="31" Width="45" Background="Black"/>
     </Grid>

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using CanTest;
 using Windows.Devices.Gpio;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
@@ -21,9 +22,13 @@ namespace App1
         private int i = 0;
 
         public StreamSocketListener Listener { get; set; }
-
-        private GlobalData globalData = new GlobalData();
         private MainPage mainPage;
+        private GlobalDataSet globalDataSet;
+
+        public ServerComm(GlobalDataSet globalDataSet)
+        {
+            this.globalDataSet = globalDataSet;
+        }
 
         // This is the static method used to start listening for connections.
 
@@ -36,7 +41,7 @@ namespace App1
             try
             {
                 await Listener.BindServiceNameAsync("4555"); // Your port goes here.
-                Debug.Write("Server started \n");
+                if(globalDataSet.DebugMode) Debug.Write("Server started \n");
                 return true;
             }
             catch (Exception ex)
@@ -53,10 +58,10 @@ namespace App1
 
             // TODO Wait some time to get things ready
 
-            Debug.Write("Client is connected. \n");
+            if(globalDataSet.DebugMode) Debug.Write("Client is connected. \n");
 
             // Set flag to begin the sending of sensor data (in MainPage) when client is connected
-            globalData.clientIsConnected = true;
+            globalDataSet.clientIsConnected = true;
 
             Stream outStream = args.Socket.OutputStream.AsStreamForWrite();
             StreamWriter writer = new StreamWriter(outStream);
@@ -66,13 +71,13 @@ namespace App1
                 try
                 {
                     //Send data to client
-                    //Debug.Write("Send to client \n");
+                    //if(globalDataSet.DebugMode) Debug.Write("Send to client \n");
 
-                    bool[] bufferState = globalData.getBufferState();
-                    string[] sendbuffer = globalData.getSendBuffer();
+                    bool[] bufferState = globalDataSet.getBufferState();
+                    string[] sendbuffer = globalDataSet.getSendBuffer();
 
-                    //Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
-                    //Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
+                    //if(globalDataSet.DebugMode) Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
+                    //if(globalDataSet.DebugMode) Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
 
                     // for (int i = 0; i <= sendbuffer.Length-1; i++)
                     //{
@@ -85,40 +90,33 @@ namespace App1
                         //await writer.FlushAsync();
                         // TODO Add delay time
                         //globalData.McpExecutionIsActive = true;
-                        Debug.Write("Send data to client / database: " + sendbuffer[i] + "\n");
                     }
                     sendbuffer[i] = "";
                     bufferState[i] = false;
-                    globalData.setBufferState(bufferState);
-                    globalData.setSendBuffer(sendbuffer);
+                    globalDataSet.setBufferState(bufferState);
+                    globalDataSet.setSendBuffer(sendbuffer);
                     //}
 
                     if (i < sendbuffer.Length - 1) i++;
-                    else i = 0;
+                    else i = 0;                  
 
                     //// Receive data from client (handshake...)
-                    //Debug.Write("Receive from client \n");
+                    //if(globalDataSet.DebugMode) Debug.Write("Receive from client \n");
                     ////Read line from the remote client.
                     //Stream inStream = args.Socket.InputStream.AsStreamForRead();
                     //StreamReader reader = new StreamReader(inStream);
                     //string request = await reader.ReadLineAsync();
-                    //Debug.Write("Received data: " + request + " \n");
+                    //if(globalDataSet.DebugMode) Debug.Write("Received data: " + request + " \n");
                 }
                 catch (Exception ex)
                 {
-                    Debug.Write("Exception in sending \n");
-
+                    if(globalDataSet.DebugMode) Debug.Write("Exception in sending \n");
+                    globalDataSet.clientIsConnected = false;
                     //writer.DetachStream();
                     // reader.DetachStream();
                     return;
                 }
             }
         }
-
-        public GlobalData getGlobalData()
-        {
-            return globalData;
-        }
-
     }
 }

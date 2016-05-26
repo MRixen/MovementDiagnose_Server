@@ -53,7 +53,7 @@ namespace CanTest
         private void mcp2515_configureCanBus()
         {
             // Configure bit timing
-            Debug.Write("Configure bit timing for sender" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Configure bit timing for sender" + "\n");
             byte[] spiMessage = new byte[2];
 
             spiMessage[0] = mcp2515.CONTROL_REGISTER_CNF1;
@@ -72,7 +72,7 @@ namespace CanTest
         public void mcp2515_execute_reset_command()
         {
             // Reset chip to get initial condition and wait for operation mode state bit
-            Debug.Write("Reset chip sender" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Reset chip sender" + "\n");
             byte[] returnMessage = new byte[1];
 
             globalDataSet.writeSimpleCommandSpi(mcp2515.SPI_INSTRUCTION_RESET, globalDataSet.MCP2515_PIN_CS_SENDER);
@@ -83,7 +83,7 @@ namespace CanTest
             {
                 actualMode = globalDataSet.mcp2515_execute_read_command(mcp2515.CONTROL_REGISTER_CANSTAT, globalDataSet.MCP2515_PIN_CS_SENDER);
             }
-            Debug.Write("Switch sender to mode " + actualMode.ToString() + " successfully" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Switch sender to mode " + actualMode.ToString() + " successfully" + "\n");
         }
 
         public void mcp2515_switchMode(byte modeToCheck, byte modeToSwitch)
@@ -102,12 +102,12 @@ namespace CanTest
             {
                 actualMode = globalDataSet.mcp2515_execute_read_command(mcp2515.CONTROL_REGISTER_CANSTAT, globalDataSet.MCP2515_PIN_CS_SENDER);
             }
-            Debug.Write("Switch sender to mode " + actualMode.ToString() + " successfully" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Switch sender to mode " + actualMode.ToString() + " successfully" + "\n");
         }
 
         private void mcp2515_configureMasksFilters()
         {
-            Debug.Write("Configure masks and filters for sender" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Configure masks and filters for sender" + "\n");
             byte[] spiMessage = new byte[] { mcp2515.CONTROL_REGISTER_TXB0CTRL, data_MCP2515_Sender.CONTROL_REGISTER_TXB0CTRL_VALUE.TXB0CTRL };
 
             globalDataSet.mcp2515_execute_write_command(spiMessage, globalDataSet.MCP2515_PIN_CS_SENDER);
@@ -116,7 +116,7 @@ namespace CanTest
         private void 
             mcp2515_configureInterrupts()
         {
-            Debug.Write("Configure interrupts for sender" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Configure interrupts for sender" + "\n");
             byte[] spiMessage = new byte[] { mcp2515.CONTROL_REGISTER_CANINTE, data_MCP2515_Sender.CONTROL_REGISTER_CANINTE_VALUE_SENDER.INTE };
 
             globalDataSet.mcp2515_execute_write_command(spiMessage, globalDataSet.MCP2515_PIN_CS_SENDER);
@@ -146,7 +146,7 @@ namespace CanTest
         public void mcp2515_load_tx_buffer0(byte byteId, byte data)
         {
             // Send message to mcp2515 tx buffer
-            Debug.Write("Load tx buffer 0 at byte " + byteId.ToString() + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Load tx buffer 0 at byte " + byteId.ToString() + "\n");
             byte[] spiMessage = new byte[2];
 
             // Set the message identifier to 10000000000 and extended identifier bit to 0

@@ -12,11 +12,12 @@ namespace CanTest
         private MCP2515 mcp2515;
         private GlobalDataSet globalDataSet;
         private Data_MCP2515_Receiver data_MCP2515_Receiver;
+        private Stopwatch timeStopper = new Stopwatch();
 
         public Logic_Mcp2515_Receiver(GlobalDataSet globalDataSet)
         {
             this.globalDataSet = globalDataSet;
-            mcp2515 = new MCP2515();
+            mcp2515 = globalDataSet.Mcp2515;
             data_MCP2515_Receiver = new Data_MCP2515_Receiver();
         }
 
@@ -34,34 +35,28 @@ namespace CanTest
 
             // Reset chip to set in operation mode
             mcp2515_execute_reset_command();
-            Task.Delay(-1).Wait(100);
 
             // Configure bit timing
             mcp2515_configureCanBus();
-            Task.Delay(-1).Wait(100);
 
             // Configure interrupts
             mcp2515_configureInterrupts();
-            Task.Delay(-1).Wait(100);
 
             // Configure bit masks and filters that we can receive everything 
             mcp2515_configureMasksFilters();
-            Task.Delay(-1).Wait(100);
 
             // Set device to normal mode
             mcp2515_switchMode(mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.NORMAL_MODE, mcp2515.CONTROL_REGISTER_CANCTRL_VALUE.NORMAL_MODE);
-            Task.Delay(-1).Wait(100);
 
             // Reset all failures
             globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-            Task.Delay(-1).Wait(100);
         }
 
-        private void mcp2515_configureCanBus()
+        public void mcp2515_configureCanBus()
         {
             // Configure bit timing
-            Debug.Write("Configure bit timing for receiver" + "\n");
-            byte[] spiMessage = new byte[2];
+            if(globalDataSet.DebugMode) Debug.Write("Configure bit timing for receiver" + "\n");
+            byte[] spiMessage = new byte[2];          
 
             spiMessage[0] = mcp2515.CONTROL_REGISTER_CNF1;
             spiMessage[1] = mcp2515.CONTROL_REGISTER_CNFx_VALUE.CNF1;
@@ -79,18 +74,34 @@ namespace CanTest
         public void mcp2515_execute_reset_command()
         {
             // Reset chip to get initial condition and wait for operation mode state bit
-            Debug.Write("Reset chip receiver" + "\n");
-            byte[] returnMessage = new byte[1];
 
-            globalDataSet.writeSimpleCommandSpi(mcp2515.SPI_INSTRUCTION_RESET, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-
-            // Read the register value
-            byte actualMode = globalDataSet.mcp2515_execute_read_command(mcp2515.CONTROL_REGISTER_CANSTAT, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-            while (mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.CONFIGURATION_MODE != (mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.CONFIGURATION_MODE & actualMode))
+            for (int i = 0; i < 3; i++)
             {
-                actualMode = globalDataSet.mcp2515_execute_read_command(mcp2515.CONTROL_REGISTER_CANSTAT, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+                if(globalDataSet.DebugMode) Debug.Write("Reset chip receiver " + i + "\n");
+                byte[] returnMessage = new byte[1];
+
+                globalDataSet.writeSimpleCommandSpi(mcp2515.SPI_INSTRUCTION_RESET, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+
+                // Read the register value
+                byte actualMode = globalDataSet.mcp2515_execute_read_command(mcp2515.CONTROL_REGISTER_CANSTAT, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+
+                timeStopper.Reset();
+                timeStopper.Start();
+                while (((actualMode & mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.CONFIGURATION_MODE) != mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.CONFIGURATION_MODE) && (timeStopper.ElapsedMilliseconds <= globalDataSet.MAX_WAIT_TIME))
+                {
+                    actualMode = globalDataSet.mcp2515_execute_read_command(mcp2515.CONTROL_REGISTER_CANSTAT, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+                }
+                if (timeStopper.ElapsedMilliseconds > globalDataSet.MAX_WAIT_TIME)
+                {
+                    if(globalDataSet.DebugMode) Debug.Write("Abort waiting for mode switch. Max. waiting time reached. Try again." + "\n");
+                    // TODO Add to global error handling thread
+                }
+                else
+                {
+                    if(globalDataSet.DebugMode) Debug.Write("Switch receiver to mode " + actualMode.ToString() + " successfully" + "\n");
+                    break;
+                }
             }
-            Debug.Write("Switch receiver to mode " + actualMode.ToString() + " successfully" + "\n");
         }
 
         public void mcp2515_switchMode(byte modeToCheck, byte modeToSwitch)
@@ -109,20 +120,26 @@ namespace CanTest
             {
                 actualMode = globalDataSet.mcp2515_execute_read_command(mcp2515.CONTROL_REGISTER_CANSTAT, globalDataSet.MCP2515_PIN_CS_RECEIVER);
             }
-            Debug.Write("Switch receiver to mode " + actualMode.ToString() + " successfully" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Switch receiver to mode " + actualMode.ToString() + " successfully" + "\n");
         }
 
         private void mcp2515_configureMasksFilters()
         {
-            Debug.Write("Configure masks and filters for receiver" + "\n");
-            byte[] spiMessage = new byte[] { mcp2515.CONTROL_REGISTER_RXB0CTRL, data_MCP2515_Receiver.CONTROL_REGISTER_RXB0CTRL_VALUE.RXB0CTRL };
+            if(globalDataSet.DebugMode) Debug.Write("Configure masks and filters for receiver" + "\n");
+            byte[] spiMessage;
 
+            // Set parameters for rx buffer 0
+            spiMessage = new byte[] { mcp2515.CONTROL_REGISTER_RXB0CTRL, data_MCP2515_Receiver.CONTROL_REGISTER_RXB0CTRL_VALUE.RXB0CTRL };
+            globalDataSet.mcp2515_execute_write_command(spiMessage, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+
+            // Set parameters for rx buffer 1
+            spiMessage = new byte[] { mcp2515.CONTROL_REGISTER_RXB1CTRL, data_MCP2515_Receiver.CONTROL_REGISTER_RXB1CTRL_VALUE.RXB1CTRL };
             globalDataSet.mcp2515_execute_write_command(spiMessage, globalDataSet.MCP2515_PIN_CS_RECEIVER);
         }
 
-        private void mcp2515_configureInterrupts()
+        public void mcp2515_configureInterrupts()
         {
-            Debug.Write("Configure interrupts for receiver" + "\n");
+            if(globalDataSet.DebugMode) Debug.Write("Configure interrupts for receiver" + "\n");
             byte[] spiMessage = new byte[] { mcp2515.CONTROL_REGISTER_CANINTE, data_MCP2515_Receiver.CONTROL_REGISTER_CANINTE_VALUE.INTE };
 
             globalDataSet.mcp2515_execute_write_command(spiMessage, globalDataSet.MCP2515_PIN_CS_RECEIVER);
@@ -135,7 +152,7 @@ namespace CanTest
             returnMessage = globalDataSet.readSimpleCommandSpi(byteId, globalDataSet.MCP2515_PIN_CS_RECEIVER);
 
             // Slow down code (We need time between SPI-Commands)
-            Task.Delay(-1).Wait(100);
+            Task.Delay(-1).Wait(50);
 
             // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
             globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
@@ -143,10 +160,16 @@ namespace CanTest
             return returnMessage[0];
         }
 
+        public byte mcp2515_get_state_command()
+        {
+            return globalDataSet.executeReadStateCommand(globalDataSet.MCP2515_PIN_CS_RECEIVER);
+        }
+
+
         public void mcp2515_load_tx_buffer0(byte byteId, byte data)
         {
             // Send message to mcp2515 tx buffer
-            //Debug.Write("Load tx buffer 0 at byte " + byteId.ToString() + " with " + data + "\n");
+            //if(globalDataSet.DebugMode) Debug.Write("Load tx buffer 0 at byte " + byteId.ToString() + " with " + data + "\n");
             byte[] spiMessage = new byte[2];
 
             // Set data to tx buffer 0
