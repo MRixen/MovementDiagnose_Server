@@ -157,7 +157,7 @@ namespace CanTest
             // Set values for bit timing
             // Fosc = 8Mhz
             // Tosc = 125ns
-            control_register_cnfx_value.CNF1 = 0x03; // Baud rate prescaler
+            control_register_cnfx_value.CNF1 = 0x00; // Baud rate prescaler
             control_register_cnfx_value.CNF2 = 0x90; // BTLMODE = 1 and PhaseSegment1 = 2
             control_register_cnfx_value.CNF3 = 0x02; // PhaseSegment2 = 2
         }

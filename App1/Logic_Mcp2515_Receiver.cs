@@ -152,7 +152,7 @@ namespace CanTest
             returnMessage = globalDataSet.readSimpleCommandSpi(byteId, globalDataSet.MCP2515_PIN_CS_RECEIVER);
 
             // Slow down code (We need time between SPI-Commands)
-            Task.Delay(-1).Wait(50);
+            Task.Delay(-1).Wait(25);
 
             // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
             globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);

@@ -12,11 +12,11 @@ namespace CanTest
     class GlobalDataSet
     {
         private int mAX_WAIT_TIME = 800;
-        private int TIME_SLOW_DOWN_CODE = 5;
+        private int TIME_SLOW_DOWN_CODE = 1;
         private bool spi_not_initialized = true;
         private GpioPin mCP2515_PIN_CS_SENDER, mCP2515_PIN_INTE_SENDER;
         private GpioPin mCP2515_PIN_CS_RECEIVER, mCP2515_PIN_INTE_RECEIVER;
-        private GpioPin CS_PIN_SENSOR_ADXL, sTART_PIN_OUT, aRDUINO_TEST_PIN;
+        private GpioPin rEQUEST_DATA, sTART_PIN_OUT, aRDUINO_TEST_PIN;
         private MCP2515 mcp2515;
         private SpiDevice spiDevice;
         private Logic_Mcp2515_Sender logic_Mcp2515_Sender;
@@ -51,32 +51,8 @@ namespace CanTest
 
         private void init_mcp2515()
         {
-            //logic_Mcp2515_Sender.init_mcp2515_sender();
             logic_Mcp2515_Receiver.init_mcp2515_receiver();
-            //init_adxl_sensor();
         }
-
-        // FOR TESTING ONLY - AFTER FINISH TESTS REMOVE THIS
-        private void init_adxl_sensor()
-        {
-            while (Spi_not_initialized)
-            {
-                // Wait until spi is ready
-            }
-            byte ACCEL_REG_POWER_CONTROL = 0x2D;  /* Address of the Power Control register                */
-            byte ACCEL_REG_DATA_FORMAT = 0x31;    /* Address of the Data Format register                  */
-
-            byte[] WriteBuf_DataFormat = new byte[] { ACCEL_REG_DATA_FORMAT, 0x01 };        /* 0x01 sets range to +- 4Gs                         */
-            byte[] WriteBuf_PowerControl = new byte[] { ACCEL_REG_POWER_CONTROL, 0x08 };    /* 0x08 puts the accelerometer into measurement mode */
-
-            if(debugMode) Debug.Write("Start Sensor init \n");
-
-            CS_PIN_SENSOR_ADXL1.Write(GpioPinValue.Low);
-            SPIDEVICE.Write(WriteBuf_DataFormat);
-            SPIDEVICE.Write(WriteBuf_PowerControl);
-            CS_PIN_SENSOR_ADXL1.Write(GpioPinValue.High);
-        }
-        //-------------------------
 
         public bool Spi_not_initialized
         {
@@ -182,16 +158,16 @@ namespace CanTest
             }
         }
 
-        public GpioPin CS_PIN_SENSOR_ADXL1
+        public GpioPin REQUEST_DATA
         {
             get
             {
-                return CS_PIN_SENSOR_ADXL;
+                return rEQUEST_DATA;
             }
 
             set
             {
-                CS_PIN_SENSOR_ADXL = value;
+                rEQUEST_DATA = value;
             }
         }
 
@@ -208,7 +184,7 @@ namespace CanTest
             }
         }
 
-        public GpioPin ARDUINO_TEST_PIN
+        public GpioPin REQUEST_DATA_HANDSHAKE
         {
             get
             {
