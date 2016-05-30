@@ -53,6 +53,11 @@ namespace App1
         private const byte ACCEL_I2C_ADDR = 0x53;           /* 7-bit I2C address of the ADXL345 with SDO pulled low */
         private const byte ACCEL_SPI_RW_BIT = 0x80;         /* Bit used in SPI transactions to indicate read/write  */
         private const byte ACCEL_SPI_MB_BIT = 0x40;         /* Bit used to indicate multi-byte SPI transactions     */
+        private const int ACCEL_RES = 1024;         /* The ADXL345 has 10 bit resolution giving 1024 unique values                     */
+        private const int ACCEL_DYN_RANGE_G = 8;    /* The ADXL345 had a total dynamic range of 8G, since we're configuring it to +-4G */
+        private const int UNITS_PER_G = ACCEL_RES / ACCEL_DYN_RANGE_G;  // Ratio of raw int values to G units          
+
+        long[] timerArray = new long[10];
 
         struct Acceleration
         {
@@ -94,8 +99,7 @@ namespace App1
         private bool firstStart;
         private bool startSequenceIsActive;
         private bool stopSequenceIsActive;
-
-        // TODO: Add timestamp to data
+        private bool getProgramDuration;
 
         public MainPage()
         {
@@ -119,6 +123,7 @@ namespace App1
             mcp2515 = globalDataSet.Mcp2515;
 
             globalDataSet.DebugMode = false;
+            getProgramDuration = false;
 
             // Inititalize raspberry pi and gpio
             init_raspberry_pi_gpio();
@@ -252,7 +257,7 @@ namespace App1
             }
 
             /* UI updates must be invoked on the UI thread */
-            var task = this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+        var task = this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
             {
                 if (indicatorMode)
                 {
@@ -296,13 +301,15 @@ namespace App1
         private Acceleration ReadAccel(byte rxStateIst, byte rxStateSoll)
         {
             byte[] returnMessage = new byte[mcp2515.MessageSizeAdxl];
-            const int ACCEL_RES = 1024;         /* The ADXL345 has 10 bit resolution giving 1024 unique values                     */
-            const int ACCEL_DYN_RANGE_G = 8;    /* The ADXL345 had a total dynamic range of 8G, since we're configuring it to +-4G */
-            const int UNITS_PER_G = ACCEL_RES / ACCEL_DYN_RANGE_G;  /* Ratio of raw int values to G units                          */
 
             if ((rxStateIst & rxStateSoll) == 1) for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_rx_buffer0(mcp2515.REGISTER_RXB0Dx[i]);
             else if ((rxStateIst & rxStateSoll) == 2) for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_rx_buffer0(mcp2515.REGISTER_RXB1Dx[i]);
 
+            // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
+            globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+
+
+            if (getProgramDuration) timerArray[3] = timer_programExecution.ElapsedMilliseconds;
 
             /* In order to get the raw 16-bit data values, we need to concatenate two 8-bit bytes for each axis */
             short AccelerationRawX = BitConverter.ToInt16(returnMessage, 0);
@@ -315,9 +322,7 @@ namespace App1
             accel.Y = (double)AccelerationRawY / UNITS_PER_G;
             accel.Z = (double)AccelerationRawZ / UNITS_PER_G;
 
-            //Debug.WriteLine(accel.X);
-            //Debug.WriteLine(accel.Y);
-            //Debug.WriteLine(accel.Z);
+            if (getProgramDuration) timerArray[4] = timer_programExecution.ElapsedMilliseconds;
 
             return accel;
         }
@@ -329,7 +334,7 @@ namespace App1
 
         public async void mcpExecutorService_task()
         {
-            await Task.Run(() => execServ_v4_mcp2515());
+            await Task.Run(() => execServ_v3_mcp2515());
         }
 
         private void execServ_v1_mcp2515()
@@ -453,9 +458,13 @@ namespace App1
 
         private void execServ_v3_mcp2515()
         {
-            timerValue = timer_programExecution.ElapsedMilliseconds;
-            timer_programExecution.Reset();
-            timer_programExecution.Start();
+            if (getProgramDuration)
+            {
+                timerValue = timer_programExecution.ElapsedMilliseconds;
+                timer_programExecution.Reset();
+                timer_programExecution.Start();
+            }
+
             while (!globalDataSet.StopAllOperations)
             {
                 if (globalDataSet.clientIsConnected)
@@ -479,14 +488,11 @@ namespace App1
                     }
                 }
             }
-            timer_programExecution.Stop();
+            //timer_programExecution.Stop();
         }
 
         private void execServ_v4_mcp2515()
         {
-            timerValue = timer_programExecution.ElapsedMilliseconds;
-            timer_programExecution.Reset();
-            timer_programExecution.Start();
             while (!globalDataSet.StopAllOperations)
             {
                 if (globalDataSet.clientIsConnected)
@@ -595,6 +601,8 @@ namespace App1
 
         private void executeAqcuisition_v1()
         {
+            if(getProgramDuration) timerArray[0] = timer_programExecution.ElapsedMilliseconds;
+
             string xText, yText, zText;
             byte rxStateIst = 0x00;
             byte rxStateSoll = 0x03;
@@ -604,35 +612,54 @@ namespace App1
             while ((globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.High))
             {
             }
+            if (getProgramDuration) timerArray[1] = timer_programExecution.ElapsedMilliseconds;
+
             if (globalDataSet.DebugMode) Debug.Write("Finished waiting, check which rx buffer." + "\n");
             // Check in which rx buffer the message is send to
             rxStateIst = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_get_state_command();
+
+            if (getProgramDuration) timerArray[2] = timer_programExecution.ElapsedMilliseconds;
 
             if (globalDataSet.DebugMode) Debug.WriteLine("Read sensor values from device ");
 
             // Read the sensor data
             Acceleration accel = ReadAccel(rxStateIst, rxStateSoll);
-
+           
             // Create string strings with sensor content
             xText = String.Format("x{0:F3}", accel.X);
             yText = String.Format("y{0:F3}", accel.Y);
             zText = String.Format("z{0:F3}", accel.Z);
 
-            string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
+            //string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
+            string message = xText + "::" + yText + "::" + zText;
             diagnose.sendToSocket("0", message);
 
             // Generate pseudo timestamp
             timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
 
+            if (getProgramDuration) timerArray[5] = timer_programExecution.ElapsedMilliseconds;
+
             // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
             globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+
+            if (getProgramDuration) timerArray[6] = timer_programExecution.ElapsedMilliseconds;
 
             // Finish handshake
             globalDataSet.REQUEST_DATA.Write(GpioPinValue.Low);
             while (globalDataSet.REQUEST_DATA_HANDSHAKE.Read() == GpioPinValue.High)
             {
             }
-            Debug.WriteLine(timer_programExecution.ElapsedMilliseconds - timerValue);
+
+            if (getProgramDuration) timerArray[7] = timer_programExecution.ElapsedMilliseconds;
+
+            if (getProgramDuration)
+            {
+                for (int i = 0; i < timerArray.Length; i++)
+                {
+                    Debug.WriteLine(timerArray[i]);
+                }
+            }
+
         }
 
         private void executeAqcuisition_v2()
@@ -671,7 +698,6 @@ namespace App1
 
             // Finish handshake
             globalDataSet.REQUEST_DATA.Write(GpioPinValue.Low);
-            Debug.WriteLine(timer_programExecution.ElapsedMilliseconds - timerValue);
         }
 
         private void executeStartSequence()

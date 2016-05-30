@@ -282,7 +282,7 @@ namespace CanTest
         }
 
         public byte executeReadStateCommand(GpioPin cs_pin)
-        {
+        { 
             byte[] returnMessage = new byte[1];
             byte[] sendMessage = new byte[1];
 
@@ -301,17 +301,8 @@ namespace CanTest
             return returnMessage[0];
         }
 
-
-
-
-
-
-
-
-
-
-
         private bool mcpExecutionIsActive = false;
+
         private bool stopAllOperations = false;
 
         public string[] sendBuffer = {"", "", "", "", "", "", "", "", "", "",
