@@ -40,6 +40,8 @@ namespace CanTest
         private byte rEGISTER_TXB0D6 = 0x3C;
         private byte rEGISTER_TXB0D7 = 0x3D;
 
+        private byte rEGISTER_RXB0SIDH = 0x61;
+        private byte rEGISTER_RXB0SIDL = 0x62;
         private byte rEGISTER_RXB0D0 = 0x66;
         private byte rEGISTER_RXB0D1 = 0x67;
         private byte rEGISTER_RXB0D2 = 0x68;
@@ -49,6 +51,8 @@ namespace CanTest
         private byte rEGISTER_RXB0D6 = 0x6C;
         private byte rEGISTER_RXB0D7 = 0x6D;
 
+        private byte rEGISTER_RXB1SIDH = 0x71;
+        private byte rEGISTER_RXB1SIDL = 0x72;
         private byte rEGISTER_RXB1D0 = 0x76;
         private byte rEGISTER_RXB1D1 = 0x77;
         private byte rEGISTER_RXB1D2 = 0x78;
@@ -88,6 +92,7 @@ namespace CanTest
         public struct cONTROL_REGISTER_CANSTAT_VALUE
         {
             public byte NORMAL_MODE;
+            public byte NORMAL_MODE_WITH_OSM;
             public byte SLEEP_MODE;
             public byte LOOPBACK_MODE;
             public byte LISTEN_ONLY_MODE;
@@ -111,6 +116,7 @@ namespace CanTest
         public struct cONTROL_REGISTER_CANCTRL_VALUE
         {
             public byte NORMAL_MODE;
+            public byte NORMAL_MODE_WITH_OSM;
             public byte SLEEP_MODE;
             public byte LOOPBACK_MODE;
             public byte LISTEN_ONLY_MODE;
@@ -138,12 +144,10 @@ namespace CanTest
         }
 
 
-
         public struct cONTROL_REGISTER_TXB0CTRL_VALUE
         {
             public byte TXB0CTRL;
         }
-
 
 
         public MCP2515()
@@ -154,10 +158,7 @@ namespace CanTest
 
         private void configureUserData()
         {
-            // Set values for bit timing
-            // Fosc = 8Mhz
-            // Tosc = 125ns
-            control_register_cnfx_value.CNF1 = 0x00; // Baud rate prescaler
+            control_register_cnfx_value.CNF1 = 0x02; // Baud rate prescaler
             control_register_cnfx_value.CNF2 = 0x90; // BTLMODE = 1 and PhaseSegment1 = 2
             control_register_cnfx_value.CNF3 = 0x02; // PhaseSegment2 = 2
         }
@@ -166,6 +167,7 @@ namespace CanTest
         {
             // Set values for mode state
             control_register_canstat_value.NORMAL_MODE = 0x00;
+            control_register_canctrl_value.NORMAL_MODE_WITH_OSM = 0x08;
             control_register_canstat_value.SLEEP_MODE = 0x20;
             control_register_canstat_value.LOOPBACK_MODE = 0x40;
             control_register_canstat_value.LISTEN_ONLY_MODE = 0x60;
@@ -173,6 +175,7 @@ namespace CanTest
 
             // Set values for mode control
             control_register_canctrl_value.NORMAL_MODE = 0x00;
+            control_register_canctrl_value.NORMAL_MODE_WITH_OSM = 0x08;
             control_register_canctrl_value.SLEEP_MODE = 0x20;
             control_register_canctrl_value.LOOPBACK_MODE = 0x40;
             control_register_canctrl_value.LISTEN_ONLY_MODE = 0x60;
@@ -548,10 +551,6 @@ namespace CanTest
             }
         }
 
-
-
-
-
         public cONTROL_REGISTER_CANCTRL_VALUE CONTROL_REGISTER_CANCTRL_VALUE
         {
             get
@@ -588,6 +587,58 @@ namespace CanTest
             set
             {
                 rEGISTER_TXB0SIDL = value;
+            }
+        }
+
+        public byte REGISTER_RXB0SIDH
+        {
+            get
+            {
+                return rEGISTER_RXB0SIDH;
+            }
+
+            set
+            {
+                rEGISTER_RXB0SIDH = value;
+            }
+        }
+
+        public byte REGISTER_RXB0SIDL
+        {
+            get
+            {
+                return rEGISTER_RXB0SIDL;
+            }
+
+            set
+            {
+                rEGISTER_RXB0SIDL = value;
+            }
+        }
+
+        public byte REGISTER_RXB1SIDH
+        {
+            get
+            {
+                return rEGISTER_RXB1SIDH;
+            }
+
+            set
+            {
+                rEGISTER_RXB1SIDH = value;
+            }
+        }
+
+        public byte REGISTER_RXB1SIDL
+        {
+            get
+            {
+                return rEGISTER_RXB1SIDL;
+            }
+
+            set
+            {
+                rEGISTER_RXB1SIDL = value;
             }
         }
 

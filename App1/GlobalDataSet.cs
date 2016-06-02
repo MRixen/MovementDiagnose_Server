@@ -16,7 +16,7 @@ namespace CanTest
         private bool spi_not_initialized = true;
         private GpioPin mCP2515_PIN_CS_SENDER, mCP2515_PIN_INTE_SENDER;
         private GpioPin mCP2515_PIN_CS_RECEIVER, mCP2515_PIN_INTE_RECEIVER;
-        private GpioPin rEQUEST_DATA, sTART_PIN_OUT, aRDUINO_TEST_PIN;
+        private GpioPin rEQUEST_DATA_EXECUTOR_0, rEQUEST_DATA_EXECUTOR_1, sTART_PIN_OUT, rEQUEST_DATA_HANDSHAKE_EXECUTOR_0, rEQUEST_DATA_HANDSHAKE_EXECUTOR_1;
         private MCP2515 mcp2515;
         private SpiDevice spiDevice;
         private Logic_Mcp2515_Sender logic_Mcp2515_Sender;
@@ -158,16 +158,29 @@ namespace CanTest
             }
         }
 
-        public GpioPin REQUEST_DATA
+        public GpioPin REQUEST_DATA_EXECUTOR_0
         {
             get
             {
-                return rEQUEST_DATA;
+                return rEQUEST_DATA_EXECUTOR_0;
             }
 
             set
             {
-                rEQUEST_DATA = value;
+                rEQUEST_DATA_EXECUTOR_0 = value;
+            }
+        }
+
+        public GpioPin REQUEST_DATA_EXECUTOR_1
+        {
+            get
+            {
+                return rEQUEST_DATA_EXECUTOR_1;
+            }
+
+            set
+            {
+                rEQUEST_DATA_EXECUTOR_1 = value;
             }
         }
 
@@ -184,18 +197,33 @@ namespace CanTest
             }
         }
 
-        public GpioPin REQUEST_DATA_HANDSHAKE
+        public GpioPin REQUEST_DATA_HANDSHAKE_EXECUTOR_0
         {
             get
             {
-                return aRDUINO_TEST_PIN;
+                return rEQUEST_DATA_HANDSHAKE_EXECUTOR_0;
             }
 
             set
             {
-                aRDUINO_TEST_PIN = value;
+                rEQUEST_DATA_HANDSHAKE_EXECUTOR_0 = value;
             }
         }
+
+        public GpioPin REQUEST_DATA_HANDSHAKE_EXECUTOR_1
+        {
+            get
+            {
+                return rEQUEST_DATA_HANDSHAKE_EXECUTOR_1;
+            }
+
+            set
+            {
+                rEQUEST_DATA_HANDSHAKE_EXECUTOR_1 = value;
+            }
+        }
+
+
 
         internal MCP2515 Mcp2515
         {

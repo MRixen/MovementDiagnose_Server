@@ -26,6 +26,7 @@ namespace CanTest
             GPIO_24,
             GPIO_25,
             GPIO_26,
+            GPIO_27,
         }
 
     }

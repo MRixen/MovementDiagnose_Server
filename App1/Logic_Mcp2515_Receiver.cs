@@ -46,10 +46,7 @@ namespace CanTest
             mcp2515_configureMasksFilters();
 
             // Set device to normal mode
-            mcp2515_switchMode(mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.NORMAL_MODE, mcp2515.CONTROL_REGISTER_CANCTRL_VALUE.NORMAL_MODE);
-
-            // Reset all failures
-            globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+            mcp2515_switchMode(mcp2515.CONTROL_REGISTER_CANSTAT_VALUE.NORMAL_MODE_WITH_OSM, mcp2515.CONTROL_REGISTER_CANCTRL_VALUE.NORMAL_MODE_WITH_OSM);
         }
 
         public void mcp2515_configureCanBus()
@@ -145,7 +142,7 @@ namespace CanTest
             globalDataSet.mcp2515_execute_write_command(spiMessage, globalDataSet.MCP2515_PIN_CS_RECEIVER);
         }
 
-        public byte mcp2515_read_rx_buffer0(byte byteId)
+        public byte mcp2515_read_buffer(byte byteId)
         {
             byte[] returnMessage = new byte[1];
 
