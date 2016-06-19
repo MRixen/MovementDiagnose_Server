@@ -294,19 +294,18 @@ namespace App1
 
         private McpExecutorDataFrame ReadAccel(byte rxStateIst, byte rxStateSoll)
         {
-            byte[] returnMessage = new byte[mcp2515.MessageSizeAdxl];            
-            byte identifier = 0xFF;
+            byte[] returnMessage = new byte[mcp2515.MessageSizeAdxl];   
 
             if ((rxStateIst & rxStateSoll) == 1)
             {
                 for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0Dx[i]);
                 // We need to check sidl only because we have not so much devices.
-                identifier = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0SIDL);
+                //identifier = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0SIDL);
             }
             else if ((rxStateIst & rxStateSoll) == 2)
             {
                 for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1Dx[i]);
-                identifier = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1SIDL);
+                //identifier = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1SIDL);
             }
 
             // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
@@ -318,6 +317,7 @@ namespace App1
             short AccelerationRawX = BitConverter.ToInt16(returnMessage, 0);
             short AccelerationRawY = BitConverter.ToInt16(returnMessage, 2);
             short AccelerationRawZ = BitConverter.ToInt16(returnMessage, 4);
+            int identifier = Convert.ToInt32(returnMessage[6]);
 
             /* Convert raw values to G's */
             McpExecutorDataFrame mcpExecutorDataFrame;

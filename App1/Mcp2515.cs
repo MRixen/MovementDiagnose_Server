@@ -190,7 +190,7 @@ namespace CanTest
             register_txb0sidh_value.identifier_Z = 0x03;
 
             // Set values for message size
-            MessageSizeAdxl = 0x06;
+            MessageSizeAdxl = 0x07; // Sensor data + identifier (1 byte)
 
             // Set addresss for tx buffer 0
             rEGISTER_TXB0Dx[0] = rEGISTER_TXB0D0;
