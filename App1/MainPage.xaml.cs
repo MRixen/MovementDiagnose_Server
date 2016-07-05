@@ -50,13 +50,14 @@ namespace App1
         private const int ACCEL_RES = 1024;         /* The ADXL345 has 10 bit resolution giving 1024 unique values                     */
         private const int ACCEL_DYN_RANGE_G = 8;    /* The ADXL345 had a total dynamic range of 8G, since we're configuring it to +-4G */
         private const int UNITS_PER_G = ACCEL_RES / ACCEL_DYN_RANGE_G;  // Ratio of raw int values to G units          
-      
+
         struct McpExecutorDataFrame
         {
             public double X;
             public double Y;
             public double Z;
             public int ident;
+            public float timeStamp;
         };
 
         // Data to set the execution context for checking the message answer from remote mcpExecutor when sending stop / start sequence
@@ -69,7 +70,6 @@ namespace App1
         private GlobalDataSet globalDataSet;
         private ServerComm serverComm;
         private Diagnose diagnose;
-        private int timestamp;
         private Task task_mcpExecutorService;
 
         private const byte MAX_MCP_DEVICE_COUNTER = 2; // max. 255
@@ -84,6 +84,7 @@ namespace App1
         // DATA FOR DEBUGGING
         private Stopwatch timeStopper = new Stopwatch();
         private Stopwatch timer_programExecution = new Stopwatch();
+        private Stopwatch timeStampWatch = new Stopwatch();
         private bool firstStart;
         private bool startSequenceIsActive;
         private bool stopSequenceIsActive;
@@ -101,14 +102,13 @@ namespace App1
             firstStart = true;
             startSequenceIsActive = false;
             stopSequenceIsActive = false;
-            timestamp = 0;
             globalDataSet = new GlobalDataSet(); // Get things like mcp2515, logic_Mcp2515_Sender, logic_Mcp2515_Receiver
             serverComm = new ServerComm(globalDataSet);
             diagnose = new Diagnose(globalDataSet);
             mcp2515 = globalDataSet.Mcp2515;
 
             // USER CONFIGURATION
-            globalDataSet.DebugMode = true;
+            globalDataSet.DebugMode = false;
             getProgramDuration = false;
 
             // Inititalize raspberry pi and gpio
@@ -251,18 +251,18 @@ namespace App1
             }
 
             /* UI updates must be invoked on the UI thread */
-        var task = this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-            {
-                if (indicatorMode)
+            var task = this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
                 {
-                    indicator.Background = new SolidColorBrush(Colors.Red);
-                }
-                else
-                {
-                    indicator.Background = new SolidColorBrush(Colors.Green);
-                }
+                    if (indicatorMode)
+                    {
+                        indicator.Background = new SolidColorBrush(Colors.Red);
+                    }
+                    else
+                    {
+                        indicator.Background = new SolidColorBrush(Colors.Green);
+                    }
 
-            });
+                });
         }
 
         private void ErrorTimer(object state)
@@ -294,7 +294,7 @@ namespace App1
 
         private McpExecutorDataFrame ReadAccel(byte rxStateIst, byte rxStateSoll)
         {
-            byte[] returnMessage = new byte[mcp2515.MessageSizeAdxl];   
+            byte[] returnMessage = new byte[mcp2515.MessageSizeAdxl];
 
             if ((rxStateIst & rxStateSoll) == 1)
             {
@@ -318,6 +318,7 @@ namespace App1
             short AccelerationRawY = BitConverter.ToInt16(returnMessage, 2);
             short AccelerationRawZ = BitConverter.ToInt16(returnMessage, 4);
             int identifier = Convert.ToInt32(returnMessage[6]);
+            long timeStamp = timeStampWatch.ElapsedMilliseconds;
 
             /* Convert raw values to G's */
             McpExecutorDataFrame mcpExecutorDataFrame;
@@ -325,6 +326,7 @@ namespace App1
             mcpExecutorDataFrame.Y = (double)AccelerationRawY / UNITS_PER_G;
             mcpExecutorDataFrame.Z = (double)AccelerationRawZ / UNITS_PER_G;
             mcpExecutorDataFrame.ident = identifier;
+            mcpExecutorDataFrame.timeStamp = (float)timeStamp/1000;
 
             if (getProgramDuration) timerArray[4] = timer_programExecution.ElapsedMilliseconds;
 
@@ -341,75 +343,6 @@ namespace App1
             await Task.Run(() => execServ_v3_mcp2515());
         }
 
-        private void execServ_v2_mcp2515()
-        {
-            string xText, yText, zText;
-            byte rxStateIst = 0x00;
-            byte rxStateSoll = 0x03;
-
-            // Start timer to measure the program execution
-            timer_programExecution.Reset();
-            timer_programExecution.Start();
-            long timerValue = timer_programExecution.ElapsedMilliseconds;
-
-            while (!globalDataSet.StopAllOperations)
-            {
-                if (globalDataSet.clientIsConnected)
-                {
-                    globalDataSet.REQUEST_DATA_EXECUTOR_0.Write(GpioPinValue.High);
-
-                    timeStopper.Reset();
-                    timeStopper.Start();
-                    while ((globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.High))
-                    {
-                    }
-                    timeStopper.Stop();
-                    if (timeStopper.ElapsedMilliseconds > globalDataSet.MAX_WAIT_TIME)
-                    {
-                        if (globalDataSet.DebugMode) Debug.Write("Abort waiting. Max. waiting time reached." + "\n");
-                        globalDataSet.REQUEST_DATA_EXECUTOR_0.Write(GpioPinValue.Low);
-                        errorCounterTransfer++;
-                    }
-                    else
-                    {
-                        if (globalDataSet.DebugMode) Debug.Write("Finished waiting, check which rx buffer." + "\n");
-                        // Check in which rx buffer the message is send to
-                        rxStateIst = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_get_state_command();
-
-                        if (globalDataSet.DebugMode) Debug.WriteLine("Read sensor values from device ");
-
-                        // Read the sensor data
-                        McpExecutorDataFrame accel = ReadAccel(rxStateIst, rxStateSoll);
-
-                        // Create string strings with sensor content
-                        xText = String.Format("x{0:F3}", accel.X);
-                        yText = String.Format("y{0:F3}", accel.Y);
-                        zText = String.Format("z{0:F3}", accel.Z);
-
-                        string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
-                        diagnose.sendToSocket("0", message);
-
-                        // Generate pseudo timestamp
-                        timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
-                        Debug.WriteLine(timestamp);
-
-                        // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
-                        globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-
-                        // Finish handshake
-                        globalDataSet.REQUEST_DATA_EXECUTOR_0.Write(GpioPinValue.Low);
-                        while (globalDataSet.REQUEST_DATA_HANDSHAKE_EXECUTOR_0.Read() == GpioPinValue.High)
-                        {
-                        }
-                        //Debug.WriteLine(timer_programExecution.ElapsedMilliseconds - timerValue);
-                    }
-                }
-
-                else timestamp = 0;
-            }
-            timer_programExecution.Stop();
-        }
-
         private void execServ_v3_mcp2515()
         {
             if (getProgramDuration)
@@ -423,67 +356,22 @@ namespace App1
             {
                 if (globalDataSet.clientIsConnected)
                 {
-                    //stopSequenceIsActive = true;
-                    //// Send start sequence
-                    //if (firstStart == true) executeStartSequence();
-
-                    //// Aquire sensor data
-                    //if (startSequenceIsActive) executeAqcuisition_v3();
+                    if (!timeStampWatch.IsRunning)
+                    {
+                        timeStampWatch.Reset();
+                        timeStampWatch.Start();
+                    }
 
                     executeAqcuisition_v3();
                 }
                 else
                 {
-                    // Send stop sequence
-                    //if (stopSequenceIsActive)
-                    //{
-                        Task.Delay(-1).Wait(200);
-                        // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
-                        //globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-                        //globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_TXB0CTRL, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-                        //Task.Delay(-1).Wait(50);
-                        timestamp = 0;
-                        //firstStart = true;
-                        //executeStopSequence();
-                        timer_programExecution.Stop();  
-                    //}
-                }
-            }      
-        }
 
-        private void execServ_v4_mcp2515()
-        {
-            if (getProgramDuration)
-            {
-                timerValue = timer_programExecution.ElapsedMilliseconds;
-                timer_programExecution.Reset();
-                timer_programExecution.Start();
-            }
-
-            while (!globalDataSet.StopAllOperations)
-            {
-                if (globalDataSet.clientIsConnected)
-                {
-                    stopSequenceIsActive = true;
-                    // Send start sequence
-                    if (firstStart == true) executeStartSequence();
-
-                    // Aquire sensor data
-                    if (startSequenceIsActive) executeAqcuisition_v1();
-                }
-                else
-                {
-                    // Send stop sequence
-                    if (stopSequenceIsActive)
-                    {
-                        Task.Delay(-1).Wait(200);
-                        timestamp = 0;
-                        firstStart = true;
-                        executeStopSequence();
-                    }
+                    Task.Delay(-1).Wait(200);
+                    timer_programExecution.Stop();
+                    timeStampWatch.Stop();
                 }
             }
-            //timer_programExecution.Stop();    
         }
 
         private void waitAndcheckAnswer(byte[] identifier, CheckExecution executionToCheck)
@@ -533,15 +421,16 @@ namespace App1
                     // Only for debugging
                     if (globalDataSet.DebugMode)
                     {
-                        if(retMsg[0] == 255) Debug.WriteLine("Received start sequence. Start program execution.");
+                        if (retMsg[0] == 255) Debug.WriteLine("Received start sequence. Start program execution.");
                         else if (retMsg[0] == 128) Debug.WriteLine("Received stop sequence. Stop program execution.");
                     }
 
-                    if (executionToCheck == CheckExecution.startExecution) {
+                    if (executionToCheck == CheckExecution.startExecution)
+                    {
                         firstStart = false;
                         startSequenceIsActive = true;
                     }
-                    else if(executionToCheck == CheckExecution.stopExecution) stopSequenceIsActive = false;
+                    else if (executionToCheck == CheckExecution.stopExecution) stopSequenceIsActive = false;
                 }
                 else
                 {
@@ -552,123 +441,11 @@ namespace App1
             }
         }
 
-        private void executeAqcuisition_v1()
-        {
-            if(getProgramDuration) timerArray[0] = timer_programExecution.ElapsedMilliseconds;
-
-            string xText, yText, zText;
-            byte rxStateIst = 0x00;
-            byte rxStateSoll = 0x03;
-
-            mcpExecutor_request[mcpExecutorCounter].Write(GpioPinValue.High);
-            //globalDataSet.REQUEST_DATA_EXECUTOR_0.Write(GpioPinValue.High);
-
-            while ((globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.High))
-            {
-            }
-            if (getProgramDuration) timerArray[1] = timer_programExecution.ElapsedMilliseconds;
-
-            if (globalDataSet.DebugMode) Debug.Write("Finished waiting, check which rx buffer." + "\n");
-            // Check in which rx buffer the message is send to
-            rxStateIst = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_get_state_command();
-
-            if (getProgramDuration) timerArray[2] = timer_programExecution.ElapsedMilliseconds;
-
-            if (globalDataSet.DebugMode) Debug.WriteLine("Read sensor values from device ");
-
-            // Read the sensor data
-            McpExecutorDataFrame accel = ReadAccel(rxStateIst, rxStateSoll);
-           
-            // Create string strings with sensor content
-            xText = String.Format("x{0:F3}", accel.X);
-            yText = String.Format("y{0:F3}", accel.Y);
-            zText = String.Format("z{0:F3}", accel.Z);
-
-            //string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
-            string message = xText + "::" + yText + "::" + zText;
-            diagnose.sendToSocket("0", message);
-
-            // Generate pseudo timestamp
-            timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
-
-            if (getProgramDuration) timerArray[5] = timer_programExecution.ElapsedMilliseconds;
-
-            // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
-            globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-
-            if (getProgramDuration) timerArray[6] = timer_programExecution.ElapsedMilliseconds;
-
-            // Finish handshake
-            //globalDataSet.REQUEST_DATA_EXECUTOR_0.Write(GpioPinValue.Low);
-            mcpExecutor_request[mcpExecutorCounter].Write(GpioPinValue.Low);
-            //while (globalDataSet.REQUEST_DATA_HANDSHAKE_EXECUTOR_0.Read() == GpioPinValue.High)
-            //{
-            //}
-            while (mcpExecutor_handshake[mcpExecutorCounter].Read() == GpioPinValue.High)
-            {
-            }
-
-            if (getProgramDuration) timerArray[7] = timer_programExecution.ElapsedMilliseconds;
-
-            if (getProgramDuration)
-            {
-                for (int i = 0; i < timerArray.Length; i++)
-                {
-                    Debug.WriteLine(timerArray[i]);
-                }
-            }
-
-            // TEST
-            mcpExecutorCounter = MAX_MCP_DEVICE_COUNTER;
-
-            // Increase mcpExecutorCounter to get data from next device
-            if (mcpExecutorCounter < MAX_MCP_DEVICE_COUNTER) mcpExecutorCounter++;
-            else mcpExecutorCounter = 0;
-        }
-
-        private void executeAqcuisition_v2()
-        {
-            string xText, yText, zText;
-            byte rxStateIst = 0x00;
-            byte rxStateSoll = 0x03;
-
-            globalDataSet.REQUEST_DATA_EXECUTOR_0.Write(GpioPinValue.High);
-
-            while ((globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.High))
-            {
-            }
-            if (globalDataSet.DebugMode) Debug.Write("Finished waiting, check which rx buffer." + "\n");
-            // Check in which rx buffer the message is send to
-            rxStateIst = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_get_state_command();
-
-            if (globalDataSet.DebugMode) Debug.WriteLine("Read sensor values from device ");
-
-            // Read the sensor data
-            McpExecutorDataFrame accel = ReadAccel(rxStateIst, rxStateSoll);
-
-            // Create string strings with sensor content
-            xText = String.Format("x{0:F3}", accel.X);
-            yText = String.Format("y{0:F3}", accel.Y);
-            zText = String.Format("z{0:F3}", accel.Z);
-
-            string message = xText + "::" + yText + "::" + zText + "::" + timestamp;
-            diagnose.sendToSocket("0", message);
-
-            // Generate pseudo timestamp
-            timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
-
-            // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
-            globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-
-            // Finish handshake
-            globalDataSet.REQUEST_DATA_EXECUTOR_0.Write(GpioPinValue.Low);
-        }
-
         private void executeAqcuisition_v3()
         {
             if (getProgramDuration) timerArray[0] = timer_programExecution.ElapsedMilliseconds;
 
-            string xText, yText, zText, sensorId;
+            string xText, yText, zText, sensorId, timeStamp;
             byte rxStateIst = 0x00;
             byte rxStateSoll = 0x03;
 
@@ -689,22 +466,20 @@ namespace App1
             // Read the sensor data
             McpExecutorDataFrame mcpExecutorDataFrame = ReadAccel(rxStateIst, rxStateSoll);
 
-            // Create string strings with sensor content
+            // Create string with sensor content
             xText = String.Format("x{0:F3}", mcpExecutorDataFrame.X);
             yText = String.Format("y{0:F3}", mcpExecutorDataFrame.Y);
             zText = String.Format("z{0:F3}", mcpExecutorDataFrame.Z);
             sensorId = mcpExecutorDataFrame.ident.ToString();
+            timeStamp = mcpExecutorDataFrame.timeStamp.ToString();
 
-            string message = xText + "::" + yText + "::" + zText;
+            string message = xText + "::" + yText + "::" + zText + "::" + timeStamp;
             diagnose.sendToSocket(sensorId, message);
-
-            // Generate pseudo timestamp
-            timestamp = timestamp + DELTA_T_MCP_EXECUTOR;
 
             if (getProgramDuration) timerArray[5] = timer_programExecution.ElapsedMilliseconds;
 
             // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
-            globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
+            //globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
 
             if (getProgramDuration) timerArray[6] = timer_programExecution.ElapsedMilliseconds;
             if (getProgramDuration) for (int i = 0; i < timerArray.Length; i++) Debug.WriteLine(timerArray[i]);

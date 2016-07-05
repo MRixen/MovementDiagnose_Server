@@ -13,10 +13,6 @@ using Windows.Storage.Streams;
 
 namespace App1
 {
-
-    // TODO Add delay time
-
-
     class ServerComm
     {
         private int i = 0;
@@ -29,8 +25,6 @@ namespace App1
         {
             this.globalDataSet = globalDataSet;
         }
-
-        // This is the static method used to start listening for connections.
 
         public async Task<bool> StartServer()
         {
@@ -56,8 +50,6 @@ namespace App1
         {
             var remoteAddress = args.Socket.Information.RemoteAddress.ToString();
 
-            // TODO Wait some time to get things ready
-
             if(globalDataSet.DebugMode) Debug.Write("Client is connected. \n");
 
             // Set flag to begin the sending of sensor data (in MainPage) when client is connected
@@ -70,50 +62,26 @@ namespace App1
             {
                 try
                 {
-                    //Send data to client
-                    //if(globalDataSet.DebugMode) Debug.Write("Send to client \n");
-
                     bool[] bufferState = globalDataSet.getBufferState();
                     string[] sendbuffer = globalDataSet.getSendBuffer();
 
-                    //if(globalDataSet.DebugMode) Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
-                    //if(globalDataSet.DebugMode) Debug.Write("sendBufferLength: " + (sendbuffer.Length - 1).ToString() + "\n");
-
-                    // for (int i = 0; i <= sendbuffer.Length-1; i++)
-                    //{
                     if (bufferState[i])
                     {                        
-                        //await writer.WriteLineAsync(sendbuffer[i]);
                         writer.Write(sendbuffer[i]);
-                        //writer.WriteLine();
                         writer.Flush();
-                        //await writer.FlushAsync();
-                        // TODO Add delay time
-                        //globalData.McpExecutionIsActive = true;
                     }
                     sendbuffer[i] = "";
                     bufferState[i] = false;
                     globalDataSet.setBufferState(bufferState);
                     globalDataSet.setSendBuffer(sendbuffer);
-                    //}
 
                     if (i < sendbuffer.Length - 1) i++;
                     else i = 0;                  
-
-                    //// Receive data from client (handshake...)
-                    //if(globalDataSet.DebugMode) Debug.Write("Receive from client \n");
-                    ////Read line from the remote client.
-                    //Stream inStream = args.Socket.InputStream.AsStreamForRead();
-                    //StreamReader reader = new StreamReader(inStream);
-                    //string request = await reader.ReadLineAsync();
-                    //if(globalDataSet.DebugMode) Debug.Write("Received data: " + request + " \n");
                 }
                 catch (Exception ex)
                 {
                     if(globalDataSet.DebugMode) Debug.Write("Exception in sending \n");
                     globalDataSet.clientIsConnected = false;
-                    //writer.DetachStream();
-                    // reader.DetachStream();
                     return;
                 }
             }

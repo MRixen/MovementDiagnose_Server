@@ -158,7 +158,7 @@ namespace CanTest
 
         private void configureUserData()
         {
-            control_register_cnfx_value.CNF1 = 0x02; // Baud rate prescaler
+            control_register_cnfx_value.CNF1 = 0x03; // Baud rate prescaler
             control_register_cnfx_value.CNF2 = 0x90; // BTLMODE = 1 and PhaseSegment1 = 2
             control_register_cnfx_value.CNF3 = 0x02; // PhaseSegment2 = 2
         }
