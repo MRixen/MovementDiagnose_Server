@@ -174,7 +174,7 @@ namespace App1
             try
             {
                 var settings = new SpiConnectionSettings(SPI_CHIP_SELECT_LINE);
-                settings.ClockFrequency = 5000000;
+                settings.ClockFrequency = 10000000;
                 settings.Mode = SpiMode.Mode3;
                 string aqs = SpiDevice.GetDeviceSelector();
                 var dis = await DeviceInformation.FindAllAsync(aqs);
@@ -295,23 +295,28 @@ namespace App1
         private McpExecutorDataFrame ReadAccel(byte rxStateIst, byte rxStateSoll)
         {
             byte[] returnMessage = new byte[mcp2515.MessageSizeAdxl];
+            byte[] returnMessageTemp = new byte[1];
 
             if ((rxStateIst & rxStateSoll) == 1)
             {
-                for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0Dx[i]);
+                byte[] spiMessage = new byte[1];
+
+                //for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0Dx[i]);
+                returnMessage = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer_v3(mcp2515.SPI_INSTRUCTION_READ_RX_BUFFER0);
                 // We need to check sidl only because we have not so much devices.
-                //identifier = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0SIDL);
+                //Debug.WriteLine("REGISTER_RXB0SIDL: " + globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0SIDL));
             }
             else if ((rxStateIst & rxStateSoll) == 2)
             {
-                for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1Dx[i]);
-                //identifier = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1SIDL);
+                //for (int i = 0; i < mcp2515.MessageSizeAdxl; i++) returnMessage[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1Dx[i]);
+                returnMessage = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer_v3(mcp2515.SPI_INSTRUCTION_READ_RX_BUFFER1);
+                //Debug.WriteLine("REGISTER_RXB1SIDL: " + globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1SIDL));
             }
 
-            // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
-            globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
-
             if (getProgramDuration) timerArray[3] = timer_programExecution.ElapsedMilliseconds;
+
+            // Reset interrupt for buffer 0 because message is read -> Reset all interrupts
+            //globalDataSet.mcp2515_execute_write_command(new byte[] { mcp2515.CONTROL_REGISTER_CANINTF, mcp2515.CONTROL_REGISTER_CANINTF_VALUE.RESET_ALL_IF }, globalDataSet.MCP2515_PIN_CS_RECEIVER);
 
             /* In order to get the raw 16-bit data values, we need to concatenate two 8-bit bytes for each axis */
             short AccelerationRawX = BitConverter.ToInt16(returnMessage, 0);
@@ -326,7 +331,7 @@ namespace App1
             mcpExecutorDataFrame.Y = (double)AccelerationRawY / UNITS_PER_G;
             mcpExecutorDataFrame.Z = (double)AccelerationRawZ / UNITS_PER_G;
             mcpExecutorDataFrame.ident = identifier;
-            mcpExecutorDataFrame.timeStamp = (float)timeStamp/1000;
+            mcpExecutorDataFrame.timeStamp = (float)timeStamp / 1000;
 
             if (getProgramDuration) timerArray[4] = timer_programExecution.ElapsedMilliseconds;
 
@@ -340,108 +345,40 @@ namespace App1
 
         public async void mcpExecutorService_task()
         {
-            await Task.Run(() => execServ_v3_mcp2515());
+            await Task.Run(() => execServ_mcp2515());
         }
 
-        private void execServ_v3_mcp2515()
+        private void execServ_mcp2515()
         {
-            if (getProgramDuration)
-            {
-                timerValue = timer_programExecution.ElapsedMilliseconds;
-                timer_programExecution.Reset();
-                timer_programExecution.Start();
-            }
-
             while (!globalDataSet.StopAllOperations)
             {
                 if (globalDataSet.clientIsConnected)
                 {
+                    if (getProgramDuration & !timer_programExecution.IsRunning)
+                    {
+                        timer_programExecution.Reset();
+                        timer_programExecution.Start();
+                    }
+
                     if (!timeStampWatch.IsRunning)
                     {
                         timeStampWatch.Reset();
                         timeStampWatch.Start();
                     }
 
-                    executeAqcuisition_v3();
+                    executeAqcuisition();
                 }
                 else
                 {
 
-                    Task.Delay(-1).Wait(200);
-                    timer_programExecution.Stop();
-                    timeStampWatch.Stop();
+                    //Task.Delay(-1).Wait(200);
+                    if (timer_programExecution.IsRunning) timer_programExecution.Stop();
+                    if (timer_programExecution.IsRunning) timeStampWatch.Stop();
                 }
             }
         }
 
-        private void waitAndcheckAnswer(byte[] identifier, CheckExecution executionToCheck)
-        {
-            byte rxStateIst = 0x00;
-            byte rxStateSoll = 0x03;
-            byte[] retMsg = new byte[2];
-
-            // Wait for handshake to check that stop sequence is received
-            if (globalDataSet.DebugMode) Debug.WriteLine("Wait for handshake / data from mcp device");
-
-            timeStopper.Reset();
-            timeStopper.Start();
-            while ((globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.High) && (timeStopper.ElapsedMilliseconds <= globalDataSet.MAX_WAIT_TIME))
-            {
-            }
-            timeStopper.Stop();
-
-            if (timeStopper.ElapsedMilliseconds > globalDataSet.MAX_WAIT_TIME)
-            {
-                if (globalDataSet.DebugMode) Debug.Write("Abort waiting. Max. waiting time reached. Try again" + "\n");
-                errorCounterTransfer++;
-                Task.Delay(-1).Wait(200);
-            }
-            else
-            {
-                if (globalDataSet.DebugMode) Debug.WriteLine("Finished waiting.");
-
-                // Check in which rx buffer the message is send to
-                rxStateIst = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_get_state_command();
-
-                // Check handshake message
-                if (globalDataSet.DebugMode) Debug.Write("Check handshake from mcp device" + "\n");
-
-                // Its possible that message is in rx buffer 0 or 1. So we need to check this with rxState
-                if ((rxStateIst & rxStateSoll) == 1) for (int i = 0; i < 2; i++) retMsg[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB0Dx[i]);
-                else if ((rxStateIst & rxStateSoll) == 2) for (int i = 0; i < 2; i++) retMsg[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_RXB1Dx[i]);
-
-                Debug.WriteLine("retMsg[0]: " + retMsg[0]);
-                Debug.WriteLine("retMsg[1]: " + retMsg[1]);
-
-                // Check if message is correct (correct start or stop sequence)
-                if ((retMsg[0] == identifier[0]) && (retMsg[1] == identifier[1]))
-                {
-                    errorCounterTransfer = 0;
-
-                    // Only for debugging
-                    if (globalDataSet.DebugMode)
-                    {
-                        if (retMsg[0] == 255) Debug.WriteLine("Received start sequence. Start program execution.");
-                        else if (retMsg[0] == 128) Debug.WriteLine("Received stop sequence. Stop program execution.");
-                    }
-
-                    if (executionToCheck == CheckExecution.startExecution)
-                    {
-                        firstStart = false;
-                        startSequenceIsActive = true;
-                    }
-                    else if (executionToCheck == CheckExecution.stopExecution) stopSequenceIsActive = false;
-                }
-                else
-                {
-                    // Do nothing and try again
-                    if (globalDataSet.DebugMode) Debug.WriteLine("No stop or start sequence received.");
-                    errorCounterTransfer++;
-                }
-            }
-        }
-
-        private void executeAqcuisition_v3()
+        private void executeAqcuisition()
         {
             if (getProgramDuration) timerArray[0] = timer_programExecution.ElapsedMilliseconds;
 
@@ -459,9 +396,9 @@ namespace App1
             // Check in which rx buffer the message is
             rxStateIst = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_get_state_command();
 
-            if (getProgramDuration) timerArray[2] = timer_programExecution.ElapsedMilliseconds;
-
             if (globalDataSet.DebugMode) Debug.WriteLine("Read sensor values from device ");
+
+            if (getProgramDuration) timerArray[2] = timer_programExecution.ElapsedMilliseconds;
 
             // Read the sensor data
             McpExecutorDataFrame mcpExecutorDataFrame = ReadAccel(rxStateIst, rxStateSoll);
@@ -473,6 +410,8 @@ namespace App1
             sensorId = mcpExecutorDataFrame.ident.ToString();
             timeStamp = mcpExecutorDataFrame.timeStamp.ToString();
 
+            //Debug.WriteLine("sensorId: " + sensorId);
+
             string message = xText + "::" + yText + "::" + zText + "::" + timeStamp;
             diagnose.sendToSocket(sensorId, message);
 
@@ -483,83 +422,6 @@ namespace App1
 
             if (getProgramDuration) timerArray[6] = timer_programExecution.ElapsedMilliseconds;
             if (getProgramDuration) for (int i = 0; i < timerArray.Length; i++) Debug.WriteLine(timerArray[i]);
-        }
-
-        private void executeStartSequence()
-        {
-            byte[] identifier = new byte[2];
-            int requestIdLow = 0xFF;
-            int requestIdHigh = 0xFF;
-            identifier[0] = Convert.ToByte(requestIdLow);
-            identifier[1] = Convert.ToByte(requestIdHigh);
-
-            if (globalDataSet.DebugMode) Debug.Write("Init tx buffer 0" + "\n");
-            globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_init_tx_buffer0(0x02, identifier);
-
-            if (globalDataSet.DebugMode) Debug.Write("Send request with id " + requestIdLow + " and " + requestIdHigh + "\n");
-            for (int i = 0; i < 2; i++) globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_load_tx_buffer0(mcp2515.REGISTER_TXB0Dx[i], identifier[i]);
-
-            // TEST
-            byte[] retMsgTest = new byte[8];
-            for (int i = 0; i < 8; i++)
-            {
-                retMsgTest[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_TXB0Dx[i]);
-                Debug.WriteLine("tx buffer 0_start: " + retMsgTest[i]);
-            }
-
-            waitAndcheckAnswer(identifier, CheckExecution.startExecution);
-        }
-
-        private void executeStopSequence()
-        {
-            byte[] identifier = new byte[2];
-            int requestIdLow = 0x80;
-            int requestIdHigh = 0x80;
-            identifier[0] = Convert.ToByte(requestIdLow);
-            identifier[1] = Convert.ToByte(requestIdHigh);
-
-            // Wait some time to for finishing sensor acquistion
-            Task.Delay(-1).Wait(100);
-
-            if (globalDataSet.DebugMode) Debug.Write("Init tx buffer 0" + "\n");
-            globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_init_tx_buffer0(0x02, identifier);
-
-            if (globalDataSet.DebugMode) Debug.Write("Send request with id " + requestIdLow + " and " + requestIdHigh + "\n");
-            for (int i = 0; i < 2; i++) globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_load_tx_buffer0(mcp2515.REGISTER_TXB0Dx[i], identifier[i]);
-
-            // TEST TO CHECK IF MESSAGE TRANSMISSION IS SUCCEEDED
-            byte retMsgTest_txb0cntrl, retMsgTest_canintf;
-            retMsgTest_txb0cntrl = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.CONTROL_REGISTER_TXB0CTRL);
-            Debug.WriteLine("retMsgTest_txb0cntrl: " + retMsgTest_txb0cntrl);
-            retMsgTest_canintf = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.CONTROL_REGISTER_CANINTE);
-            Debug.WriteLine("retMsgTest_canintf: " + retMsgTest_canintf);
-
-            // TEST
-            byte[] retMsgTest = new byte[8];
-            for (int i = 0; i < 8; i++)
-            {
-                retMsgTest[i] = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_read_buffer(mcp2515.REGISTER_TXB0Dx[i]);
-                Debug.WriteLine("tx buffer 0: " + retMsgTest[i]);
-            }
-
-            waitAndcheckAnswer(identifier, CheckExecution.stopExecution);
-        }
-
-        private void sendRequestToMcp2515(int requestIdLow, int requestIdHigh, bool checkMessage)
-        {
-            byte[] identifier = new byte[2];
-            byte[] retMsg = new byte[2];
-            byte rxStateIst = 0x00;
-            byte rxStateSoll = 0x03;
-
-            identifier[0] = Convert.ToByte(requestIdLow);
-            identifier[1] = Convert.ToByte(requestIdHigh);
-
-            if (globalDataSet.DebugMode) Debug.Write("Init tx buffer 0" + "\n");
-            globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_init_tx_buffer0(0x02, identifier);
-
-            if (globalDataSet.DebugMode) Debug.Write("Send request with id " + requestIdLow + " and " + requestIdHigh + "\n");
-            for (int i = 0; i < 2; i++) globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_load_tx_buffer0(mcp2515.REGISTER_TXB0Dx[i], identifier[i]);
         }
     }
 }

@@ -66,7 +66,8 @@ namespace CanTest
         private byte sPI_INSTRUCTION_RESET = 0xC0;
         private byte sPI_INSTRUCTION_READ = 0x03;
         private byte sPI_INSTRUCTION_READ_RX_BUFFER0_SIDH = 0x90;
-        private byte sPI_INSTRUCTION_READ_RX_BUFFER0_D0 = 0x92;
+        private byte sPI_INSTRUCTION_READ_RX_BUFFER0 = 0x92;
+        private byte sPI_INSTRUCTION_READ_RX_BUFFER1 = 0x96;
         private byte sPI_INSTRUCTION_WRITE = 0x02;
         private byte sPI_INSTRUCTION_LOAD_TX_BUFFER0_ID = 0x40;
         private byte sPI_INSTRUCTION_LOAD_TX_BUFFER0_DATA = 0x41;
@@ -798,16 +799,29 @@ namespace CanTest
             }
         }
 
-        public byte SPI_INSTRUCTION_READ_RX_BUFFER0_D0
+        public byte SPI_INSTRUCTION_READ_RX_BUFFER0
         {
             get
             {
-                return sPI_INSTRUCTION_READ_RX_BUFFER0_D0;
+                return sPI_INSTRUCTION_READ_RX_BUFFER0;
             }
 
             set
             {
-                sPI_INSTRUCTION_READ_RX_BUFFER0_D0 = value;
+                sPI_INSTRUCTION_READ_RX_BUFFER0 = value;
+            }
+        }
+
+        public byte SPI_INSTRUCTION_READ_RX_BUFFER1
+        {
+            get
+            {
+                return sPI_INSTRUCTION_READ_RX_BUFFER1;
+            }
+
+            set
+            {
+                sPI_INSTRUCTION_READ_RX_BUFFER1 = value;
             }
         }
 

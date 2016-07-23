@@ -256,19 +256,52 @@ namespace CanTest
             cs_pin.Write(GpioPinValue.Low);
             spiDevice.Write(new byte[] { command });
             cs_pin.Write(GpioPinValue.High);
-            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
+            //Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
         }
 
         public byte[] readSimpleCommandSpi(byte registerAddress, GpioPin cs_pin)
         {
             byte[] returnMessage = new byte[1];
-            byte[] spiMessage = new byte[1];
 
             cs_pin.Write(GpioPinValue.Low);
             spiDevice.Write(new byte[] { mcp2515.SPI_INSTRUCTION_READ, registerAddress });
             spiDevice.Read(returnMessage);
             cs_pin.Write(GpioPinValue.High);
-            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
+            //Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
+
+            return returnMessage;
+        }
+
+        public byte[] readSimpleCommandSpi_v2(byte registerAddress, GpioPin cs_pin)
+        {
+            byte[] returnMessage = new byte[7];
+            byte[] returnMessageTemp = new byte[1];
+
+            cs_pin.Write(GpioPinValue.Low);
+            spiDevice.Write(new byte[] { mcp2515.SPI_INSTRUCTION_READ, registerAddress });
+            for (int i = 0; i < 7; i++)
+            {
+                spiDevice.Read(returnMessageTemp);
+                returnMessage[i] = returnMessageTemp[0];
+            }
+            cs_pin.Write(GpioPinValue.High);
+
+            return returnMessage;
+        }
+
+        public byte[] readSimpleCommandSpi_v3(byte bufferId, GpioPin cs_pin)
+        {
+            byte[] returnMessage = new byte[7];
+            byte[] returnMessageTemp = new byte[1];
+
+            cs_pin.Write(GpioPinValue.Low);
+            spiDevice.Write(new byte[] { bufferId });
+            for (int i = 0; i < 7; i++)
+            {
+                spiDevice.Read(returnMessageTemp);
+                returnMessage[i] = returnMessageTemp[0];
+            }
+            cs_pin.Write(GpioPinValue.High);
 
             return returnMessage;
         }
@@ -292,7 +325,7 @@ namespace CanTest
 
             // Disable device
             cs_pin.Write(GpioPinValue.High);
-            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
+            //Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
 
             return returnMessage[0];
         }
@@ -306,7 +339,7 @@ namespace CanTest
             spiDevice.Write(new byte[] { mcp2515.SPI_INSTRUCTION_WRITE });
             spiDevice.Write(spiMessage);
             cs_pin.Write(GpioPinValue.High);
-            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
+            //Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
         }
 
         public byte executeReadStateCommand(GpioPin cs_pin)
@@ -324,7 +357,7 @@ namespace CanTest
 
             // Disable device
             cs_pin.Write(GpioPinValue.High);
-            Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
+            //Task.Delay(-1).Wait(TIME_SLOW_DOWN_CODE);
 
             return returnMessage[0];
         }
