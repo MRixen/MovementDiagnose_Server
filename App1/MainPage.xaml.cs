@@ -386,13 +386,15 @@ namespace App1
             byte rxStateIst = 0x00;
             byte rxStateSoll = 0x03;
 
+            if (globalDataSet.DebugMode) Debug.WriteLine("Wait until a message is received in buffer 0 or 1");
+
             // Wait until a message is received in buffer 0 or 1
             while ((globalDataSet.MCP2515_PIN_INTE_RECEIVER.Read() == GpioPinValue.High))
             {
             }
             if (getProgramDuration) timerArray[1] = timer_programExecution.ElapsedMilliseconds;
 
-            if (globalDataSet.DebugMode) Debug.Write("Finished waiting, check which rx buffer." + "\n");
+            if (globalDataSet.DebugMode) Debug.WriteLine("Finished waiting, check which rx buffer.");
             // Check in which rx buffer the message is
             rxStateIst = globalDataSet.LOGIC_MCP2515_RECEIVER.mcp2515_get_state_command();
 
@@ -410,10 +412,11 @@ namespace App1
             sensorId = mcpExecutorDataFrame.ident.ToString();
             timeStamp = mcpExecutorDataFrame.timeStamp.ToString();
 
-            //Debug.WriteLine("sensorId: " + sensorId);
-
             string message = xText + "::" + yText + "::" + zText + "::" + timeStamp;
             diagnose.sendToSocket(sensorId, message);
+
+            if (globalDataSet.DebugMode) Debug.WriteLine("sensorId: " + sensorId);
+            if (globalDataSet.DebugMode) Debug.WriteLine("message: " + message);
 
             if (getProgramDuration) timerArray[5] = timer_programExecution.ElapsedMilliseconds;
 
